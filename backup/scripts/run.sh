@@ -1,4 +1,5 @@
 #!/bin/sh
+# backup/scripts/run.sh
 set -e
 
 echo "Starting PostgreSQL Backup Service..."
