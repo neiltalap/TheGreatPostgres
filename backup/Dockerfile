@@ -1,17 +1,17 @@
 FROM alpine:3.19
 
-# Install required packages
+# Install required packages including py3-awscli from Alpine repos
 RUN apk update && \
     apk add --no-cache \
     postgresql-client \
-    python3 py3-pip \
+    python3 \
+    py3-pip \
     curl \
     gzip \
     coreutils \
     dcron \
-    openssl && \
-    pip3 install --upgrade pip && \
-    pip3 install awscli && \
+    openssl \
+    py3-awscli && \
     rm -rf /var/cache/apk/*
 
 # Environment variables with defaults
