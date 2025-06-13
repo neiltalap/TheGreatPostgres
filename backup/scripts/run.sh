@@ -51,7 +51,7 @@ aws ${AWS_ARGS} s3api put-object --bucket "${S3_BUCKET}" --key "${S3_PREFIX}/mon
 # Check if we should run immediately or on schedule
 if [ "${SCHEDULE}" = "**None**" ] || [ -z "${SCHEDULE}" ]; then
     echo "Running immediate backup..."
-    ./scripts/backup.sh
+    ./backup.sh
 else
     echo "Starting scheduled backup service..."
     # Update cron with custom schedule
