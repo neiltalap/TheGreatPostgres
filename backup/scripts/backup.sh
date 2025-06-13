@@ -1,224 +1,146 @@
-#!/bin/bash
-# backup-manager.sh - Simple backup management script
-
+#!/bin/sh
 set -e
+set -o pipefail
 
-# Colors for output
-RED='\033[0;31m'
-GREEN='\033[0;32m'
-YELLOW='\033[1;33m'
-BLUE='\033[0;34m'
-NC='\033[0m'
+echo "$(date): Starting PostgreSQL backup..."
 
-# Source environment variables
-if [ -f .env ]; then
-    source .env
+# Validate environment variables
+for var in S3_ACCESS_KEY_ID S3_SECRET_ACCESS_KEY S3_BUCKET POSTGRES_DATABASE POSTGRES_HOST POSTGRES_USER POSTGRES_PASSWORD; do
+    eval value=\$${var}
+    if [ "${value}" = "**None**" ] || [ -z "${value}" ]; then
+        echo "Error: ${var} environment variable is required"
+        exit 1
+    fi
+done
+
+# Setup AWS environment
+export AWS_ACCESS_KEY_ID="${S3_ACCESS_KEY_ID}"
+export AWS_SECRET_ACCESS_KEY="${S3_SECRET_ACCESS_KEY}"
+export AWS_DEFAULT_REGION="${S3_REGION}"
+
+# Setup PostgreSQL environment
+export PGPASSWORD="${POSTGRES_PASSWORD}"
+POSTGRES_HOST_OPTS="-h ${POSTGRES_HOST} -p ${POSTGRES_PORT} -U ${POSTGRES_USER}"
+
+# S3 configuration
+if [ "${S3_ENDPOINT}" != "**None**" ] && [ -n "${S3_ENDPOINT}" ]; then
+    AWS_ARGS="--endpoint-url ${S3_ENDPOINT}"
 else
-    echo -e "${RED}Error: .env file not found${NC}"
+    AWS_ARGS=""
+fi
+
+# Generate backup filename with timestamp
+BACKUP_DATE=$(date +"%Y-%m-%dT%H:%M:%SZ")
+BACKUP_FILE="${POSTGRES_DATABASE}_${BACKUP_DATE}.sql"
+COMPRESSED_FILE="${BACKUP_FILE}.gz"
+
+# Determine backup type based on date
+DAY_OF_WEEK=$(date +%u)  # 1=Monday, 7=Sunday
+DAY_OF_MONTH=$(date +%d)
+
+if [ "${MONTHLY_BACKUP}" = "yes" ] && [ "${DAY_OF_MONTH}" = "01" ]; then
+    BACKUP_TYPE="monthly"
+    echo "Creating monthly backup..."
+elif [ "${WEEKLY_BACKUP}" = "yes" ] && [ "${DAY_OF_WEEK}" = "7" ]; then
+    BACKUP_TYPE="weekly"
+    echo "Creating weekly backup..."
+else
+    BACKUP_TYPE="daily"
+    echo "Creating daily backup..."
+fi
+
+# Create backup directory
+mkdir -p /tmp/backup
+
+# Test database connection
+echo "Testing database connection..."
+if ! pg_isready -h "${POSTGRES_HOST}" -p "${POSTGRES_PORT}" -U "${POSTGRES_USER}"; then
+    echo "Error: Cannot connect to database"
     exit 1
 fi
 
-# S3 configuration
-AWS_ARGS=""
-if [ -n "${HETZNER_S3_ENDPOINT}" ]; then
-    AWS_ARGS="--endpoint-url ${HETZNER_S3_ENDPOINT}"
+echo "✓ Database connection successful"
+
+# Create database backup
+echo "Creating database dump..."
+pg_dump ${POSTGRES_HOST_OPTS} \
+    -d "${POSTGRES_DATABASE}" \
+    ${POSTGRES_EXTRA_OPTS} \
+    --verbose \
+    --no-owner \
+    --no-privileges \
+    > "/tmp/backup/${BACKUP_FILE}"
+
+if [ ! -f "/tmp/backup/${BACKUP_FILE}" ] || [ ! -s "/tmp/backup/${BACKUP_FILE}" ]; then
+    echo "Error: Backup file creation failed or file is empty"
+    exit 1
 fi
 
-show_help() {
-    echo -e "${BLUE}PostgreSQL Backup Management${NC}"
-    echo "=============================="
-    echo ""
-    echo "Commands:"
-    echo "  backup                    - Create immediate backup"
-    echo "  list [daily|weekly|monthly] - List available backups"
-    echo "  restore <filename>        - Restore from specific backup"
-    echo "  restore-latest           - Restore from latest backup"
-    echo "  start-backup-service     - Start automated backup service"
-    echo "  stop-backup-service      - Stop automated backup service"
-    echo "  logs                     - Show backup service logs"
-    echo "  setup                    - Initial S3 setup and test"
-    echo ""
-    echo "Examples:"
-    echo "  $0 backup"
-    echo "  $0 list daily"
-    echo "  $0 restore myapp_2024-06-13T02:00:00Z.sql.gz"
-    echo "  $0 restore-latest"
-}
+echo "✓ Database dump created"
 
-create_backup() {
-    echo -e "${YELLOW}Creating immediate backup...${NC}"
-    
-    # Override schedule to run immediately
-    SCHEDULE="**None**" docker compose run --rm postgres-backup
-    
-    echo -e "${GREEN}✓ Backup completed${NC}"
-}
+# Compress backup
+echo "Compressing backup..."
+gzip "/tmp/backup/${BACKUP_FILE}"
 
-list_backups() {
-    local backup_type="${1:-daily}"
+if [ ! -f "/tmp/backup/${COMPRESSED_FILE}" ]; then
+    echo "Error: Backup compression failed"
+    exit 1
+fi
+
+BACKUP_SIZE=$(du -h "/tmp/backup/${COMPRESSED_FILE}" | cut -f1)
+echo "✓ Backup compressed: ${BACKUP_SIZE}"
+
+# Upload to S3
+echo "Uploading backup to S3..."
+aws ${AWS_ARGS} s3 cp "/tmp/backup/${COMPRESSED_FILE}" "s3://${S3_BUCKET}/${S3_PREFIX}/${BACKUP_TYPE}/${COMPRESSED_FILE}"
+
+# Verify upload
+if aws ${AWS_ARGS} s3 ls "s3://${S3_BUCKET}/${S3_PREFIX}/${BACKUP_TYPE}/${COMPRESSED_FILE}" >/dev/null 2>&1; then
+    echo "✓ Backup uploaded successfully to ${BACKUP_TYPE} folder"
+else
+    echo "Error: Backup upload verification failed"
+    exit 1
+fi
+
+# Cleanup local backup
+rm -f "/tmp/backup/${COMPRESSED_FILE}"
+echo "✓ Local backup cleaned up"
+
+# Cleanup old backups based on retention policy
+if [ "${BACKUP_RETENTION_DAYS}" -gt 0 ]; then
+    echo "Cleaning up old ${BACKUP_TYPE} backups older than ${BACKUP_RETENTION_DAYS} days..."
     
-    echo -e "${BLUE}Available ${backup_type} backups:${NC}"
-    echo ""
+    # Calculate cutoff date
+    if command -v date >/dev/null 2>&1; then
+        # Try GNU date first (Linux)
+        CUTOFF_DATE=$(date -d "${BACKUP_RETENTION_DAYS} days ago" +%Y-%m-%d 2>/dev/null) || \
+        # Fall back to BSD date (Alpine)
+        CUTOFF_DATE=$(date -v-${BACKUP_RETENTION_DAYS}d +%Y-%m-%d 2>/dev/null) || \
+        # Skip cleanup if date calculation fails
+        CUTOFF_DATE=""
+    fi
     
-    aws ${AWS_ARGS} s3 ls "s3://${HETZNER_S3_BUCKET}/${S3_PREFIX:-backup}/${backup_type}/" | \
-        grep "\.sql\.gz$" | \
-        sort -r | \
-        head -20 | \
+    if [ -n "${CUTOFF_DATE}" ]; then
+        # List and delete old backups
+        aws ${AWS_ARGS} s3 ls "s3://${S3_BUCKET}/${S3_PREFIX}/${BACKUP_TYPE}/" | \
         while read -r line; do
-            date=$(echo "$line" | awk '{print $1" "$2}')
-            size=$(echo "$line" | awk '{print $3}')
-            filename=$(echo "$line" | awk '{print $4}')
-            printf "%-20s %-10s %s\n" "$date" "$size" "$filename"
+            backup_date=$(echo "$line" | awk '{print $1}')
+            backup_filename=$(echo "$line" | awk '{print $4}')
+            
+            if [ -n "$backup_filename" ] && [ "$backup_date" \< "$CUTOFF_DATE" ]; then
+                echo "Deleting old backup: $backup_filename"
+                aws ${AWS_ARGS} s3 rm "s3://${S3_BUCKET}/${S3_PREFIX}/${BACKUP_TYPE}/$backup_filename"
+            fi
         done
-}
-
-restore_backup() {
-    local backup_file="$1"
-    
-    if [ -z "$backup_file" ]; then
-        echo -e "${RED}Error: Backup filename required${NC}"
-        echo "Usage: $0 restore <filename>"
-        return 1
-    fi
-    
-    echo -e "${YELLOW}Restoring from backup: ${backup_file}${NC}"
-    echo -e "${RED}WARNING: This will overwrite the current database!${NC}"
-    read -p "Type 'yes' to confirm: " confirm
-    
-    if [ "$confirm" != "yes" ]; then
-        echo "Cancelled."
-        return 0
-    fi
-    
-    RESTORE_BACKUP_FILE="$backup_file" docker compose run --rm postgres-restore
-    
-    echo -e "${GREEN}✓ Restore completed${NC}"
-}
-
-restore_latest() {
-    echo -e "${YELLOW}Restoring from latest backup...${NC}"
-    echo -e "${RED}WARNING: This will overwrite the current database!${NC}"
-    read -p "Type 'yes' to confirm: " confirm
-    
-    if [ "$confirm" != "yes" ]; then
-        echo "Cancelled."
-        return 0
-    fi
-    
-    RESTORE_BACKUP_FILE="latest" docker compose run --rm postgres-restore
-    
-    echo -e "${GREEN}✓ Restore completed${NC}"
-}
-
-start_backup_service() {
-    echo -e "${YELLOW}Starting automated backup service...${NC}"
-    
-    docker compose --profile backup up -d postgres-backup
-    
-    echo -e "${GREEN}✓ Backup service started${NC}"
-    echo "View logs with: $0 logs"
-}
-
-stop_backup_service() {
-    echo -e "${YELLOW}Stopping backup service...${NC}"
-    
-    docker compose stop postgres-backup
-    docker compose rm -f postgres-backup
-    
-    echo -e "${GREEN}✓ Backup service stopped${NC}"
-}
-
-show_logs() {
-    echo -e "${BLUE}Backup service logs:${NC}"
-    docker compose logs -f postgres-backup
-}
-
-setup_s3() {
-    echo -e "${BLUE}Setting up S3 for PostgreSQL backups...${NC}"
-    
-    # Validate S3 configuration
-    if [ -z "$HETZNER_S3_ACCESS_KEY" ] || [ -z "$HETZNER_S3_SECRET_KEY" ] || [ -z "$HETZNER_S3_BUCKET" ]; then
-        echo -e "${RED}Error: Missing S3 configuration in .env file!${NC}"
-        echo "Required variables:"
-        echo "- HETZNER_S3_ACCESS_KEY"
-        echo "- HETZNER_S3_SECRET_KEY"
-        echo "- HETZNER_S3_BUCKET"
-        echo "- HETZNER_S3_ENDPOINT"
-        exit 1
-    fi
-    
-    # Configure AWS CLI
-    aws configure set aws_access_key_id "$HETZNER_S3_ACCESS_KEY"
-    aws configure set aws_secret_access_key "$HETZNER_S3_SECRET_KEY"
-    aws configure set default.region "${HETZNER_S3_REGION:-eu-central}"
-    
-    # Test S3 connection
-    echo -e "${YELLOW}Testing S3 connection...${NC}"
-    if aws ${AWS_ARGS} s3 ls "s3://${HETZNER_S3_BUCKET}" >/dev/null 2>&1; then
-        echo -e "${GREEN}✓ S3 connection successful${NC}"
+        echo "✓ Old backup cleanup completed"
     else
-        echo -e "${RED}✗ S3 connection failed${NC}"
-        echo "Check your credentials and bucket name."
-        echo ""
-        echo "Create bucket if needed:"
-        echo "aws s3 mb s3://${HETZNER_S3_BUCKET} ${AWS_ARGS}"
-        exit 1
+        echo "Warning: Could not calculate cutoff date for cleanup"
     fi
-    
-    # Create S3 folder structure
-    echo -e "${YELLOW}Creating S3 folder structure...${NC}"
-    aws ${AWS_ARGS} s3api put-object --bucket "$HETZNER_S3_BUCKET" --key "backup/daily/" >/dev/null 2>&1 || true
-    aws ${AWS_ARGS} s3api put-object --bucket "$HETZNER_S3_BUCKET" --key "backup/weekly/" >/dev/null 2>&1 || true
-    aws ${AWS_ARGS} s3api put-object --bucket "$HETZNER_S3_BUCKET" --key "backup/monthly/" >/dev/null 2>&1 || true
-    
-    echo -e "${GREEN}✓ S3 folder structure created${NC}"
-    
-    # Test backup if PostgreSQL is running
-    if docker compose ps postgres | grep -q "Up"; then
-        echo -e "${YELLOW}Testing backup...${NC}"
-        create_backup
-        echo -e "${GREEN}✓ Test backup completed${NC}"
-    else
-        echo -e "${YELLOW}PostgreSQL not running. Start with: docker compose up -d${NC}"
-    fi
-    
-    echo ""
-    echo -e "${GREEN}S3 setup completed successfully!${NC}"
-}
+fi
 
-# Main script logic
-case "${1:-help}" in
-    backup)
-        create_backup
-        ;;
-    list)
-        list_backups "$2"
-        ;;
-    restore)
-        restore_backup "$2"
-        ;;
-    restore-latest)
-        restore_latest
-        ;;
-    start-backup-service)
-        start_backup_service
-        ;;
-    stop-backup-service)
-        stop_backup_service
-        ;;
-    logs)
-        show_logs
-        ;;
-    setup)
-        setup_s3
-        ;;
-    help|--help|-h)
-        show_help
-        ;;
-    *)
-        echo -e "${RED}Unknown command: $1${NC}"
-        echo ""
-        show_help
-        exit 1
-        ;;
-esac
+echo "$(date): Backup completed successfully"
+echo "Backup details:"
+echo "  Type: ${BACKUP_TYPE}"
+echo "  File: ${COMPRESSED_FILE}"
+echo "  Size: ${BACKUP_SIZE}"
+echo "  Location: s3://${S3_BUCKET}/${S3_PREFIX}/${BACKUP_TYPE}/${COMPRESSED_FILE}"
