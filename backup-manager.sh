@@ -47,8 +47,25 @@ show_help() {
 create_backup() {
     echo -e "${YELLOW}Creating immediate backup...${NC}"
     
-    # Use environment variable override to force immediate backup
-    RUN_IMMEDIATE=true docker compose run --rm postgres-backup
+    # Check if backup container is running
+    if ! docker ps --format "table {{.Names}}" | grep -q "postgres-backup"; then
+        echo -e "${YELLOW}Backup service not running, starting it first...${NC}"
+        docker compose --profile backup up -d postgres-backup
+        
+        # Wait for container to be ready
+        echo -e "${YELLOW}Waiting for backup service to initialize...${NC}"
+        sleep 10
+        
+        # Check if it's actually running
+        if ! docker ps --format "table {{.Names}}" | grep -q "postgres-backup"; then
+            echo -e "${RED}Failed to start backup service${NC}"
+            exit 1
+        fi
+    fi
+    
+    # Execute backup script directly in the running container
+    echo -e "${YELLOW}Running backup script in container...${NC}"
+    docker exec postgres-backup /backup/scripts/backup.sh
     
     echo -e "${GREEN}✓ Backup completed${NC}"
 }
@@ -115,6 +132,7 @@ start_backup_service() {
     docker compose --profile backup up -d postgres-backup
     
     echo -e "${GREEN}✓ Backup service started${NC}"
+    echo "The service will run scheduled backups at 2 AM daily"
     echo "View logs with: $0 logs"
 }
 
@@ -129,7 +147,12 @@ stop_backup_service() {
 
 show_logs() {
     echo -e "${BLUE}Backup service logs:${NC}"
-    docker compose logs -f postgres-backup
+    if docker ps --format "table {{.Names}}" | grep -q "postgres-backup"; then
+        docker compose logs -f postgres-backup
+    else
+        echo -e "${YELLOW}Backup service is not running${NC}"
+        echo "Start it with: $0 start-backup-service"
+    fi
 }
 
 setup_s3() {
