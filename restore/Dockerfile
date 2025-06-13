@@ -1,4 +1,4 @@
-FROM alpine:3.19
+FROM alpine:edge
 
 # Install required packages with PostgreSQL 17
 RUN apk update && \
