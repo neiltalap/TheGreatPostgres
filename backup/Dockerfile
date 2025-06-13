@@ -1,9 +1,9 @@
 FROM alpine:3.19
 
-# Install required packages
+# Install required packages with PostgreSQL 17
 RUN apk update && \
     apk add --no-cache \
-    postgresql-client \
+    postgresql17-client \
     python3 \
     py3-pip \
     curl \
@@ -13,6 +13,12 @@ RUN apk update && \
     openssl && \
     pip3 install --break-system-packages awscli && \
     rm -rf /var/cache/apk/*
+
+# Create symlinks for standard postgresql commands
+RUN ln -sf /usr/bin/pg_dump17 /usr/bin/pg_dump && \
+    ln -sf /usr/bin/pg_restore17 /usr/bin/pg_restore && \
+    ln -sf /usr/bin/psql17 /usr/bin/psql && \
+    ln -sf /usr/bin/pg_isready17 /usr/bin/pg_isready
 
 # Environment variables with defaults
 ENV POSTGRES_DATABASE **None**

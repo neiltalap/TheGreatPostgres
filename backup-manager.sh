@@ -169,6 +169,15 @@ setup_s3() {
         exit 1
     fi
     
+    # Stop and remove existing backup services
+    echo -e "${YELLOW}Stopping existing backup services...${NC}"
+    docker compose stop postgres-backup postgres-restore 2>/dev/null || true
+    docker compose rm -f postgres-backup postgres-restore 2>/dev/null || true
+    
+    # Force rebuild backup images
+    echo -e "${YELLOW}Rebuilding backup and restore images...${NC}"
+    docker compose build --no-cache --pull postgres-backup postgres-restore
+    
     # Configure AWS CLI
     aws configure set aws_access_key_id "$HETZNER_S3_ACCESS_KEY"
     aws configure set aws_secret_access_key "$HETZNER_S3_SECRET_KEY"
@@ -195,8 +204,19 @@ setup_s3() {
     
     echo -e "${GREEN}✓ S3 folder structure created${NC}"
     
-    # Test backup if PostgreSQL is running
+    # Create the production_db database if it doesn't exist
     if docker compose ps postgres | grep -q "Up"; then
+        echo -e "${YELLOW}Ensuring production_db database exists...${NC}"
+        docker exec postgres-prod psql -U dbuser -c "SELECT 1 FROM pg_database WHERE datname = 'production_db';" | grep -q 1 || \
+        docker exec postgres-prod psql -U dbuser -c "CREATE DATABASE production_db;"
+        echo -e "${GREEN}✓ Database ensured${NC}"
+        
+        # Start backup service
+        echo -e "${YELLOW}Starting backup service...${NC}"
+        docker compose --profile backup up -d postgres-backup
+        sleep 5
+        
+        # Test backup
         echo -e "${YELLOW}Testing backup...${NC}"
         create_backup
         echo -e "${GREEN}✓ Test backup completed${NC}"
