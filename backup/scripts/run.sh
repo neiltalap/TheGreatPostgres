@@ -49,9 +49,12 @@ aws ${AWS_ARGS} s3api put-object --bucket "${S3_BUCKET}" --key "${S3_PREFIX}/wee
 aws ${AWS_ARGS} s3api put-object --bucket "${S3_BUCKET}" --key "${S3_PREFIX}/monthly/" >/dev/null 2>&1 || true
 
 # Check if we should run immediately or on schedule
-if [ "${SCHEDULE}" = "**None**" ] || [ -z "${SCHEDULE}" ]; then
+# Fix: Check for multiple conditions that indicate immediate backup
+if [ "${SCHEDULE}" = "**None**" ] || [ -z "${SCHEDULE}" ] || [ "${SCHEDULE}" = "immediate" ] || [ "${RUN_IMMEDIATE}" = "true" ]; then
     echo "Running immediate backup..."
-    ./backup.sh
+    /backup/scripts/backup.sh
+    echo "Immediate backup completed, exiting..."
+    exit 0
 else
     echo "Starting scheduled backup service..."
     # Update cron with custom schedule

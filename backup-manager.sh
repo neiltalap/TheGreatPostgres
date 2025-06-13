@@ -47,8 +47,8 @@ show_help() {
 create_backup() {
     echo -e "${YELLOW}Creating immediate backup...${NC}"
     
-    # Override schedule to run immediately
-    SCHEDULE="**None**" docker compose run --rm postgres-backup
+    # Use environment variable override to force immediate backup
+    RUN_IMMEDIATE=true docker compose run --rm postgres-backup
     
     echo -e "${GREEN}✓ Backup completed${NC}"
 }
