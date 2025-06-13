@@ -164,7 +164,7 @@ services:
     networks:
       - postgres_network
     depends_on:
-      - pgladmin
+      - pgadmin
 
 volumes:
   postgres_data:
