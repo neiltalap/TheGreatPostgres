@@ -47,8 +47,8 @@ aws ${AWS_ARGS} s3api put-object --bucket "${S3_BUCKET}" --key "${S3_PREFIX}/dai
 aws ${AWS_ARGS} s3api put-object --bucket "${S3_BUCKET}" --key "${S3_PREFIX}/weekly/" >/dev/null 2>&1 || true
 aws ${AWS_ARGS} s3api put-object --bucket "${S3_BUCKET}" --key "${S3_PREFIX}/monthly/" >/dev/null 2>&1 || true
 
-# Run backup immediately if no schedule
-if [ "${SCHEDULE}" = "**None**" ]; then
+# Check if we should run immediately or on schedule
+if [ "${SCHEDULE}" = "**None**" ] || [ -z "${SCHEDULE}" ]; then
     echo "Running immediate backup..."
     ./scripts/backup.sh
 else

@@ -1,5 +1,4 @@
 #!/bin/bash
-# backup-manager.sh - Simple backup management script
 
 set -e
 
@@ -48,7 +47,8 @@ show_help() {
 create_backup() {
     echo -e "${YELLOW}Creating immediate backup...${NC}"
     
-    docker compose run --rm postgres-backup
+    # Override schedule to run immediately
+    SCHEDULE="**None**" docker compose run --rm postgres-backup
     
     echo -e "${GREEN}✓ Backup completed${NC}"
 }
