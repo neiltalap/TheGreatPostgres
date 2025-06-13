@@ -165,8 +165,6 @@ services:
       - postgres_network
     depends_on:
       - pgladmin
-    profiles:
-      - tunnel
 
 volumes:
   postgres_data:
