@@ -1,1 +1,5 @@
 .env
+certs/*
+!certs/.gitkeep
+client-certs/*
+!client-certs/.gitkeep
