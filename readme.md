@@ -12,8 +12,7 @@ A comprehensive PostgreSQL backup solution with automated S3-compatible storage,
 - **Retention Management**: Automatic cleanup of old backups
 - **Compression**: Gzip compression to minimize storage costs
 - **Easy Management**: Simple command-line interface
- - **TLS-Only Access**: All TCP connections require SSL/TLS (hostssl)
- - **Auto Certs**: Self-signed certificate auto-generated on first run (customizable)
+- **TLS-Only Access**: All TCP connections require SSL/TLS (hostssl)
 
 ## ⚙️ PostgreSQL + TLS + Extensions
 
@@ -171,31 +170,32 @@ psql "host=<PUBLIC_IP> port=5432 dbname=production_db user=dbuser sslmode=requir
 ```bash
 psql "host=pgdb.example.com port=5432 dbname=production_db user=dbuser sslmode=verify-full sslrootcert=ca.pem"
 
-Automatic self-signed certificate
+Create a self-signed certificate
 
-This stack auto-generates a self-signed certificate on first run if none exists, via the `certs-init` service. You can customize the subject and SANs via env vars:
-
-- `POSTGRES_SSL_CN` (default: `postgres.local`)
-- `POSTGRES_SSL_SAN` (default: `DNS:postgres.local,IP:127.0.0.1`)
-- `POSTGRES_SSL_DAYS` (default: `365`)
-
-Examples:
+If you don't have a CA-signed cert yet, you can generate a self-signed certificate with Subject Alternative Names (SAN) and place it into `certs/`:
 
 ```bash
-# For a public IP
-POSTGRES_SSL_CN=your.public.ip
-POSTGRES_SSL_SAN="IP:your.public.ip"
+mkdir -p certs
 
-# For a DNS name
-POSTGRES_SSL_CN=db.example.com
-POSTGRES_SSL_SAN="DNS:db.example.com,IP:your.public.ip"
+# Customize these for your setup
+CN=db.example.com                 # or your.public.ip
+SAN="DNS:db.example.com,IP:203.0.113.10"  # at least one DNS or IP
+DAYS=365
 
-docker compose up -d   # certs-init runs once and creates certs/ if needed
+openssl req -x509 -nodes -newkey rsa:4096 -days "$DAYS" \
+  -keyout certs/server.key -out certs/server.crt \
+  -subj "/CN=$CN" -addext "subjectAltName=$SAN" -sha256
+
+chmod 600 certs/server.key
+sudo chown 999:999 certs/server.key certs/server.crt || true
+
+# Apply by recreating Postgres
+docker compose up -d --force-recreate postgres
 ```
 
 Notes:
-- Auto-generated certs are self-signed. Use `sslmode=require` to encrypt without hostname validation, or install a CA-signed cert and use `sslmode=verify-full`.
-- To replace the cert, delete files under `certs/` and redeploy.
+- With a self-signed cert, clients can use `sslmode=require` to encrypt without verification.
+- For verification, use a cert signed by a CA trusted by your clients and `sslmode=verify-full`.
 ```
 
 ### 2. One-Time Setup
