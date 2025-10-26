@@ -9,34 +9,26 @@ services:
       POSTGRES_SSL_DAYS: ${POSTGRES_SSL_DAYS:-365}
     volumes:
       - ./certs:/output
-    command: >
-      sh -c '
-      set -e;
-      if [ ! -f /output/server.crt ] || [ ! -f /output/server.key ]; then \
-        echo "[certs-init] Generating self-signed certificate"; \
-        apk add --no-cache openssl >/dev/null; \
-        cat > /tmp/openssl.cnf <<EOF
-      [req]
-      distinguished_name = req_distinguished_name
-      x509_extensions = v3_req
-      prompt = no
-
-      [req_distinguished_name]
-      CN = $${POSTGRES_SSL_CN}
-
-      [v3_req]
-      subjectAltName = $${POSTGRES_SSL_SAN}
-      EOF
-        ; \
-        openssl req -x509 -nodes -newkey rsa:4096 -days "$$POSTGRES_SSL_DAYS" \
-          -keyout /output/server.key -out /output/server.crt \
-          -config /tmp/openssl.cnf -sha256; \
-        chmod 600 /output/server.key; \
-        chown 999:999 /output/server.key /output/server.crt || true; \
-        echo "[certs-init] Self-signed cert created in ./certs"; \
-      else \
-        echo "[certs-init] Existing certs found in ./certs; skipping generation"; \
-      fi'
+    command:
+      - sh
+      - -c
+      - |
+          set -e
+          if [ ! -f /output/server.crt ] || [ ! -f /output/server.key ]; then
+            echo "[certs-init] Generating self-signed certificate"
+            apk add --no-cache openssl >/dev/null
+            CN="${POSTGRES_SSL_CN:-postgres.local}"
+            SAN="${POSTGRES_SSL_SAN:-DNS:postgres.local,IP:127.0.0.1}"
+            DAYS="${POSTGRES_SSL_DAYS:-365}"
+            openssl req -x509 -nodes -newkey rsa:4096 -days "$DAYS" \
+              -keyout /output/server.key -out /output/server.crt \
+              -subj "/CN=$CN" -addext "subjectAltName=$SAN" -sha256
+            chmod 600 /output/server.key
+            chown 999:999 /output/server.key /output/server.crt || true
+            echo "[certs-init] Self-signed cert created in ./certs"
+          else
+            echo "[certs-init] Existing certs found in ./certs; skipping generation"
+          fi
   postgres:
     image: postgres:17.5-alpine3.22
     container_name: postgres-prod
