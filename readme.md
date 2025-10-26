@@ -204,6 +204,32 @@ psql "host=<PUBLIC_IP> port=5432 dbname=production_db user=dbuser sslmode=requir
 
 ```bash
 psql "host=pgdb.example.com port=5432 dbname=production_db user=dbuser sslmode=verify-full sslrootcert=ca.pem"
+
+Automatic self-signed certificate
+
+This stack auto-generates a self-signed certificate on first run if none exists, via the `certs-init` service. You can customize the subject and SANs via env vars:
+
+- `POSTGRES_SSL_CN` (default: `postgres.local`)
+- `POSTGRES_SSL_SAN` (default: `DNS:postgres.local,IP:127.0.0.1`)
+- `POSTGRES_SSL_DAYS` (default: `365`)
+
+Examples:
+
+```bash
+# For a public IP
+POSTGRES_SSL_CN=your.public.ip
+POSTGRES_SSL_SAN="IP:your.public.ip"
+
+# For a DNS name
+POSTGRES_SSL_CN=db.example.com
+POSTGRES_SSL_SAN="DNS:db.example.com,IP:your.public.ip"
+
+docker compose up -d   # certs-init runs once and creates certs/ if needed
+```
+
+Notes:
+- Auto-generated certs are self-signed. Use `sslmode=require` to encrypt without hostname validation, or install a CA-signed cert and use `sslmode=verify-full`.
+- To replace the cert, delete files under `certs/` and redeploy.
 ```
 
 ### 2. One-Time Setup
