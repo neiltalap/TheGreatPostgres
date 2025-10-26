@@ -9,3 +9,4 @@ Start here:
 - docs/tls-mtls.md — set up server and client certs (mTLS)
 - docs/clients.md — how clients connect with mTLS
 - docs/backup-restore.md — use backups/restores with mTLS
+- docs/commands.md — script usage (certs + backup manager)
