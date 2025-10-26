@@ -49,12 +49,11 @@ POSTGRES_SSL=off
 PG_PASSWORD_ENCRYPTION=scram-sha-256
 
 # pg_hba.conf generation
-POSTGRES_NETWORK_SUBNET=172.20.0.0/16   # compose bridge subnet
-INCLUDE_DEFAULT_DOCKER_SUBNET=true      # also allow 172.17.0.0/16
+POSTGRES_NETWORK_SUBNET=172.20.0.0/16    # compose bridge subnet
+INCLUDE_DEFAULT_DOCKER_SUBNET=true       # also allow 172.17.0.0/16
 DEFAULT_DOCKER_SUBNET=172.17.0.0/16
-PG_HBA_METHOD=scram-sha-256
-PG_HBA_HOST_CIDRS=10.0.0.0/8,192.168.0.0/16  # extra allowed ranges
-PG_HBA_METHOD=scram-sha-256                  # auth method for allowed hosts
+PG_HBA_METHOD=scram-sha-256              # auth method for allowed hosts
+PG_HBA_HOST_CIDRS=10.0.0.0/8,192.168.0.0/16  # extra allowed ranges (comma OR space separated)
 ```
 
 Notes:
@@ -128,17 +127,20 @@ Note: No performance tuning variables are required — the Postgres container au
 
 ### Public Access (optional)
 
-If you need to allow a specific public client IP to connect directly to PostgreSQL:
+If you need to allow one or more public client IPs to connect directly to PostgreSQL:
 
-- Add the client IP (CIDR) to `PG_HBA_HOST_CIDRS` in your `.env`, for example:
+- Add the client IPs (CIDRs) to `PG_HBA_HOST_CIDRS` in your `.env`. You can separate by commas or spaces (quote the value if using spaces). Examples:
 
-  `PG_HBA_HOST_CIDRS=65.109.161.209/32`
+  `PG_HBA_HOST_CIDRS=65.109.161.209/32,203.0.113.10/32`
+  `PG_HBA_HOST_CIDRS="65.109.161.209/32 203.0.113.10/32"`
 
 - Expose Postgres on a public interface by changing the `postgres` service `ports` mapping in `docker-compose.yaml` from a private bind to a public one, for example:
 
   `- "${SERVER_PUBLIC_IP:-0.0.0.0}:5432:5432"`
 
-  Replace or remove the existing private-only mapping. Ensure your firewall only allows source `65.109.161.209` on port `5432`.
+  Replace or remove the existing private-only mapping. Ensure your firewall only allows your allowed source IPs on port `5432`.
+
+Apply changes by restarting the postgres service: `docker compose up -d postgres` (the config is re-rendered at container start).
 
 Security note: `pg_hba.conf` still enforces an allowlist and SCRAM auth, but exposing 5432 publicly will attract Internet scans. Prefer IP filtering at the firewall as an additional layer.
 

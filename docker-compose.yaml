@@ -8,7 +8,7 @@ services:
       POSTGRES_USER: ${POSTGRES_USER:-dbuser}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Please set POSTGRES_PASSWORD}
       POSTGRES_INITDB_ARGS: "--auth-host=scram-sha-256 --auth-local=scram-sha-256"
-      # Optional: extra allowed hosts in pg_hba.conf (comma-separated CIDRs)
+      # Optional: extra allowed hosts in pg_hba.conf (comma- OR space-separated CIDRs)
       # By default, allow one public client IP as requested.
       PG_HBA_HOST_CIDRS: ${PG_HBA_HOST_CIDRS:-65.109.161.209/32}
       # Authentication method for pg_hba.conf entries
