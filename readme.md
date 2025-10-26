@@ -12,58 +12,32 @@ A comprehensive PostgreSQL backup solution with automated S3-compatible storage,
 - **Retention Management**: Automatic cleanup of old backups
 - **Compression**: Gzip compression to minimize storage costs
 - **Easy Management**: Simple command-line interface
+ - **TLS-Only Access**: All TCP connections require SSL/TLS (hostssl)
+ - **Auto Certs**: Self-signed certificate auto-generated on first run (customizable)
 
-## ⚙️ Auto-Tuned PostgreSQL + Extensions
+## ⚙️ PostgreSQL + TLS + Extensions
 
-The container now auto-generates `postgresql.conf` and `pg_hba.conf` on startup based on container resources and environment variables. No need to hand-edit config files.
+This stack uses the official Postgres image with static, versioned configs and TLS enforced.
 
-Additionally, the Postgres service uses the official TimescaleDB image (`timescale/timescaledb:latest-pg17`). On first initialization, the init scripts enable `timescaledb` and will also enable `vector` if the image includes pgvector.
+Key points:
+
+- Image: `postgres:17.5-alpine` exposed on `5432:5432`.
+- Configs: `postgresql.conf` (SSL on) and `pg_hba.conf` (TLS-only via `hostssl`) are mounted read-only.
+- Access: By default, `pg_hba.conf` permits TLS from any IP (IPv4/IPv6). Edit it to restrict to specific CIDRs.
+- Auth: SCRAM password authentication.
+
+Extensions:
+
+- `init-scripts/10-extensions.sh` attempts to create `timescaledb` and `vector` when available. With the plain Postgres image, these may be absent; the script logs a notice and continues.
 
 - Detection: Reads cgroup limits to detect memory and CPU cores
 - Tuning: Sets `shared_buffers`, `effective_cache_size`, `work_mem`, and parallel workers
 - Access: Generates `pg_hba.conf` from your network CIDRs; denies all else
 
-Environment overrides (optional):
-
-```
-# Resource hints (override auto-detection)
-PG_MEMORY_MB=8192
-
-# Connection limits
-PG_MAX_CONNECTIONS=400
-POSTGRES_MAX_CONNECTIONS=400
-
-# Memory (choose either PG_* in MB or POSTGRES_* with units like 2GB)
-PG_SHARED_BUFFERS_MB=2048
-PG_EFFECTIVE_CACHE_MB=6144
-PG_WORK_MEM_MB=10
-PG_MAINTENANCE_WORK_MEM_MB=512
-POSTGRES_SHARED_BUFFERS=2GB
-POSTGRES_EFFECTIVE_CACHE_SIZE=6GB
-POSTGRES_WORK_MEM=10MB
-POSTGRES_MAINTENANCE_WORK_MEM=512MB
-
-# SSL and password encryption
-PG_SSL=off
-POSTGRES_SSL=off
-PG_PASSWORD_ENCRYPTION=scram-sha-256
-
-# pg_hba.conf generation
-POSTGRES_NETWORK_SUBNET=172.20.0.0/16    # compose bridge subnet
-INCLUDE_DEFAULT_DOCKER_SUBNET=true       # also allow 172.17.0.0/16
-DEFAULT_DOCKER_SUBNET=172.17.0.0/16
-PG_HBA_METHOD=scram-sha-256              # auth method for allowed hosts
-PG_HBA_HOST_CIDRS=10.0.0.0/8,192.168.0.0/16  # extra allowed ranges (comma OR space separated)
-```
-
 Notes:
 
-- The service runs with `command: ["bash", "/config/render-config.sh"]` and no longer mounts static `postgresql.conf`/`pg_hba.conf` files (these files were removed).
-- To lock values precisely, set the `POSTGRES_*` variables with units (e.g., `2GB`).
-- Otherwise, the script auto-tunes from memory/CPU limits and `PG_*` MB overrides.
-- TimescaleDB is preloaded automatically if present; you can force preload by setting `PG_SHARED_PRELOAD_LIBRARIES`.
-- Extensions are created via `init-scripts/10-extensions.sh` when the data directory is initialized. If you already have data, run the `CREATE EXTENSION` statements manually.
-- If you require `pgvector` and your image doesn’t include it, switch back to a custom image that installs `postgresql-17-pgvector` or build from source (we previously supported this).
+- To restrict access, replace the open `hostssl` rules for `0.0.0.0/0` and `::/0` in `pg_hba.conf` with specific CIDRs, then recreate the container.
+- If you require `timescaledb`/`vector`, use an image that includes them or build your own.
 
 Example to create a hypertable after your app creates a table:
 
@@ -123,26 +97,18 @@ BACKUP_RETENTION_DAYS=1825  # 5 years retention
 BACKUP_SCHEDULE="0 2 * * *"  # Daily at 2 AM
 ```
 
-Note: No performance tuning variables are required — the Postgres container auto‑tunes memory, parallelism, and connection limits based on available resources.
+Note: Performance tuning is via the tracked `postgresql.conf`. Adjust it directly if needed.
 
-### Public Access (optional)
+### Network Access
 
-If you need to allow one or more public client IPs to connect directly to PostgreSQL:
+- Default: Postgres listens on all interfaces (host port `5432`) and `pg_hba.conf` allows TLS connections from any IP. Strong credentials are required.
+- Restricting access: Edit `pg_hba.conf` to replace the open `hostssl` rules for `0.0.0.0/0` and `::/0` with specific CIDRs, e.g.:
 
-- Add the client IPs (CIDRs) to `PG_HBA_HOST_CIDRS` in your `.env`. You can separate by commas or spaces (quote the value if using spaces). Examples:
+  `hostssl all all 203.0.113.10/32 scram-sha-256`
+  `hostssl all all 2001:db8::/64 scram-sha-256`
 
-  `PG_HBA_HOST_CIDRS=65.109.161.209/32,203.0.113.10/32`
-  `PG_HBA_HOST_CIDRS="65.109.161.209/32 203.0.113.10/32"`
-
-- Expose Postgres on a public interface by changing the `postgres` service `ports` mapping in `docker-compose.yaml` from a private bind to a public one, for example:
-
-  `- "${SERVER_PUBLIC_IP:-0.0.0.0}:5432:5432"`
-
-  Replace or remove the existing private-only mapping. Ensure your firewall only allows your allowed source IPs on port `5432`.
-
-Apply changes by restarting the postgres service: `docker compose up -d postgres` (the config is re-rendered at container start).
-
-Security note: `pg_hba.conf` still enforces an allowlist and SCRAM auth, but exposing 5432 publicly will attract Internet scans. Prefer IP filtering at the firewall as an additional layer.
+  Then recreate Postgres: `docker compose up -d --force-recreate postgres`.
+- Firewall: Add host-level firewall rules to match your CIDRs for defense-in-depth.
 
 ### 3. Cloudflare Tunnel Setup (pgAdmin)
 
@@ -713,6 +679,9 @@ TheGreatPostgres/
 ├── docker-compose.yaml         # Service definitions
 ├── readme.md                   # This guide
 ├── .env                        # Environment configuration (you create this)
+├── postgresql.conf             # Static Postgres server config (SSL enabled)
+├── pg_hba.conf                 # Client auth rules (TLS-only via hostssl)
+├── certs/                      # Mounted certs directory (server.crt/key)
 ├── backup/
 │   ├── Dockerfile              # Backup container image
 │   └── scripts/
@@ -722,8 +691,7 @@ TheGreatPostgres/
 │   ├── Dockerfile              # Restore container image
 │   └── scripts/
 │       └── restore.sh          # Restore execution script (in container)
-├── config/
-│   └── render-config.sh        # Auto-tunes PostgreSQL config at startup
+
 ├── init-scripts/
 │   └── 10-extensions.sh        # Enables TimescaleDB (+ pgvector if present)
 ├── pgadmin-servers.json        # Preconfigured pgAdmin connection
@@ -734,7 +702,7 @@ TheGreatPostgres/
 
 1. **Environment Variables**: Keep `.env` file secure and never commit to version control
 2. **S3 Permissions**: Use minimal required S3 permissions for backup bucket
-3. **Network Security**: Bind PostgreSQL to private network interfaces only
+3. **Network Access**: Prefer restricting `pg_hba.conf` to specific CIDRs and enforce host firewall rules
 4. **Backup Encryption**: Consider S3 bucket encryption for sensitive data
 5. **Access Control**: Restrict access to backup management scripts
 
