@@ -1,0 +1,11 @@
+First copy the client-certs:
+
+```bash
+scp -r root@95.217.209.43:/root/TheGreatPostgres/client-certs /home/kaer/Documents/gogreen-db-connection
+```
+
+Then copy the ca.cert, which is needed:
+
+```bash
+08:46:09 (base) kaer@dumpster ~ → scp -r root@95.217.209.43:/root/TheGreatPostgres/certs/ca.crt /home/kaer/Documents/gogreen-db-connection
+```

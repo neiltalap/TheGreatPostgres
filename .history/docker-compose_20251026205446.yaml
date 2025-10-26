@@ -1,0 +1,147 @@
+services:
+  postgres:
+    image: postgres:17.5-alpine3.22
+    container_name: postgres-prod
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-production_db}
+      POSTGRES_USER: ${POSTGRES_USER:-dbuser}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Please set POSTGRES_PASSWORD}
+      POSTGRES_INITDB_ARGS: "--auth-host=scram-sha-256 --auth-local=scram-sha-256"
+      # Use a subdirectory for PGDATA so first-init works even if the host mount
+      # contains system entries like lost+found
+      PGDATA: /var/lib/postgresql/data/pgdata
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./init-scripts:/docker-entrypoint-initdb.d:ro
+      - ./postgresql.conf:/etc/postgresql/postgresql.conf:ro
+      - ./pg_hba.conf:/etc/postgresql/pg_hba.conf:ro
+      - ./certs:/etc/postgresql/certs:ro
+    depends_on: {}
+    command: >
+      postgres
+      -c config_file=/etc/postgresql/postgresql.conf
+      -c hba_file=/etc/postgresql/pg_hba.conf
+    healthcheck:
+      test:
+        [
+          "CMD-SHELL",
+          "pg_isready -U ${POSTGRES_USER:-dbuser} -d ${POSTGRES_DB:-production_db}",
+        ]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "100m"
+        max-file: "3"
+
+  # Automated backup service
+  postgres-backup:
+    build:
+      context: .
+      dockerfile: backup/Dockerfile
+    container_name: postgres-backup
+    restart: unless-stopped
+    environment:
+      # Schedule - daily at 2 AM
+      SCHEDULE: "0 2 * * *"
+
+      # Database connection (internal network)
+      POSTGRES_HOST: postgres
+      POSTGRES_PORT: 5432
+      POSTGRES_DATABASE: ${POSTGRES_DB:-production_db}
+      POSTGRES_USER: ${POSTGRES_USER:-dbuser}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_EXTRA_OPTS: "--schema=public --blobs --compress=9"
+      # TLS client certs for mTLS to Postgres
+      PGSSLMODE: ${PGSSLMODE:-verify-full}
+      PGSSLROOTCERT: ${PGSSLROOTCERT:-/client-certs/ca.crt}
+      PGSSLCERT: ${PGSSLCERT:-/client-certs/client.crt}
+      PGSSLKEY: ${PGSSLKEY:-/client-certs/client.key}
+
+      # S3 configuration
+      S3_ACCESS_KEY_ID: ${HETZNER_S3_ACCESS_KEY}
+      S3_SECRET_ACCESS_KEY: ${HETZNER_S3_SECRET_KEY}
+      S3_BUCKET: ${HETZNER_S3_BUCKET:-postgres-backups}
+      S3_REGION: ${HETZNER_S3_REGION:-eu-central}
+      S3_ENDPOINT: ${HETZNER_S3_ENDPOINT}
+      S3_PREFIX: backup
+
+      # Backup retention (days)
+      BACKUP_RETENTION_DAYS: ${BACKUP_RETENTION_DAYS:-30}
+
+      # Backup types
+      WEEKLY_BACKUP: "yes"
+      MONTHLY_BACKUP: "yes"
+    volumes:
+      - ./client-certs:/client-certs:ro
+    depends_on:
+      postgres:
+        condition: service_healthy
+    profiles:
+      - backup
+
+  # One-time restore service
+  postgres-restore:
+    build:
+      context: .
+      dockerfile: restore/Dockerfile
+    container_name: postgres-restore
+    restart: "no"
+    environment:
+      # Database connection
+      POSTGRES_HOST: postgres
+      POSTGRES_PORT: 5432
+      POSTGRES_DATABASE: ${POSTGRES_DB:-production_db}
+      POSTGRES_USER: ${POSTGRES_USER:-dbuser}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      # TLS client certs for mTLS to Postgres
+      PGSSLMODE: ${PGSSLMODE:-verify-full}
+      PGSSLROOTCERT: ${PGSSLROOTCERT:-/client-certs/ca.crt}
+      PGSSLCERT: ${PGSSLCERT:-/client-certs/client.crt}
+      PGSSLKEY: ${PGSSLKEY:-/client-certs/client.key}
+
+      # S3 configuration
+      S3_ACCESS_KEY_ID: ${HETZNER_S3_ACCESS_KEY}
+      S3_SECRET_ACCESS_KEY: ${HETZNER_S3_SECRET_KEY}
+      S3_BUCKET: ${HETZNER_S3_BUCKET:-postgres-backups}
+      S3_REGION: ${HETZNER_S3_REGION:-eu-central}
+      S3_ENDPOINT: ${HETZNER_S3_ENDPOINT}
+      S3_PREFIX: backup
+
+      # Restore options
+      DROP_PUBLIC: "yes"
+      BACKUP_FILE: ${RESTORE_BACKUP_FILE:-latest}
+    volumes:
+      - ./client-certs:/client-certs:ro
+    depends_on:
+      postgres:
+        condition: service_healthy
+    profiles:
+      - restore
+
+  # PostgreSQL monitoring
+  postgres-exporter:
+    image: prometheuscommunity/postgres-exporter:latest
+    container_name: postgres-exporter
+    restart: unless-stopped
+    environment:
+      DATA_SOURCE_NAME: "postgresql://${POSTGRES_USER:-dbuser}@postgres:5432/${POSTGRES_DB:-production_db}?sslmode=verify-full&sslrootcert=/client-certs/ca.crt&sslcert=/client-certs/client.crt&sslkey=/client-certs/client.key"
+    ports:
+      - "9187:9187"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    profiles:
+      - monitoring
+    volumes:
+      - ./client-certs:/client-certs:ro
+
+volumes:
+  postgres_data:
+    driver: local
