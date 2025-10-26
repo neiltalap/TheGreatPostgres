@@ -11,16 +11,23 @@ Quickstart
 1) Copy env template and fill values
    - `cp .env.example .env` (set S3 credentials and DB names/users)
 2) Generate TLS certs (CA, server with SAN, client per user)
-   - Place files under `certs/` (server, ca) and `client-certs/` (client)
-   - See docs/tls-mtls.md
-3) Bring up Postgres
+   - `./generate-certs.sh --cn db.ozinozi.com --client dbuser`
+   - Places files under `certs/` (server, ca) and `client-certs/` (client)
+   - Script auto-sets permissions; it also attempts `chown 999:999` on server certs (optional)
+3) Start Postgres
    - `docker compose up -d postgres`
-4) Open firewall to 5432 for your allowed networks (optional; mTLS required regardless)
-5) Connect from client over the Internet with mTLS
+4) Create extra DB users (if you generated additional client certs)
+   - `docker exec -it postgres-prod psql -U postgres -c "CREATE ROLE appuser LOGIN;"`
+   - The client cert CN must equal the Postgres role name
+5) Open firewall to 5432 for your allowed networks (mTLS required regardless)
+6) Test client connection (psql example)
    - `psql "host=db.ozinozi.com port=5432 dbname=production_db user=dbuser sslmode=verify-full sslrootcert=ca.crt sslcert=client.crt sslkey=client.key"`
-6) Configure backups
-   - Place client certs under `client-certs/` for the backup identity
-   - See docs/backup-restore.md
+7) Configure and test backups
+   - Put backup identity certs in `client-certs/` (e.g., create `--client backup` with the script)
+   - `./backup-manager.sh setup` (validates S3, builds images, runs a test backup)
+   - `./backup-manager.sh list` (verify uploaded backup)
+8) Optional: run exporter (Prometheus metrics on 9187)
+   - `docker compose up -d postgres-exporter`
 
 More
 - docs/overview.md — high-level summary

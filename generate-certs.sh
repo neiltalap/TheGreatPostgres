@@ -109,6 +109,10 @@ openssl req -new -key certs/server.key -out certs/server.csr -config certs/serve
 openssl x509 -req -in certs/server.csr -CA certs/ca.crt -CAkey certs/ca.key -CAcreateserial \
   -out certs/server.crt -days "$DAYS" -sha256 -extensions v3_req -extfile certs/server.cnf >/dev/null 2>&1
 chmod 600 certs/server.key
+if command -v chown >/dev/null 2>&1; then
+  # Postgres in container typically runs as UID 999
+  chown 999:999 certs/server.key certs/server.crt certs/ca.crt >/dev/null 2>&1 || true
+fi
 echo "[certs] Wrote certs/server.crt and certs/server.key"
 
 # 3) Client certs for provided users
