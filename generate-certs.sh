@@ -30,16 +30,16 @@ USAGE
 }
 
 CN=""
-declare -a SANS
-declare -a CLIENTS
+SANS=""        # comma-separated list e.g. "DNS:example.com,IP:1.2.3.4"
+CLIENTS=""     # space-separated list of usernames
 DAYS=825
 FORCE=0
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --cn) CN="$2"; shift 2;;
-    --san) SANS+=("$2"); shift 2;;
-    --client) CLIENTS+=("$2"); shift 2;;
+    --san) SANS="${SANS:+$SANS,}$2"; shift 2;;
+    --client) CLIENTS+=" ${2}"; shift 2;;
     --days) DAYS="$2"; shift 2;;
     --force) FORCE=1; shift;;
     -h|--help) usage; exit 0;;
@@ -61,15 +61,15 @@ if [[ -z "$CN" ]]; then
 fi
 
 # Default SAN if not provided
-if [[ ${#SANS[@]} -eq 0 ]]; then
+if [[ -z "${SANS}" ]]; then
   if [[ "$CN" =~ ^([0-9]{1,3}\.){3}[0-9]{1,3}$ ]]; then
-    SANS=("IP:$CN")
+    SANS="IP:$CN"
   else
-    SANS=("DNS:$CN")
+    SANS="DNS:$CN"
   fi
 fi
 
-SAN_STRING=$(IFS=,; echo "${SANS[*]}")
+SAN_STRING="$SANS"
 
 # 1) Create CA if missing
 if [[ ! -f certs/ca.key || ! -f certs/ca.crt || $FORCE -eq 1 ]]; then
@@ -113,7 +113,7 @@ echo "[certs] Wrote certs/server.crt and certs/server.key"
 
 # 3) Client certs for provided users
 FIRST_CLIENT=""
-for user in "${CLIENTS[@]:-}"; do
+for user in ${CLIENTS}; do
   [[ -z "$user" ]] && continue
   [[ -z "$FIRST_CLIENT" ]] && FIRST_CLIENT="$user"
   echo "[certs] Generating client certificate for user=$user"
@@ -146,4 +146,3 @@ fi
 
 echo "[certs] Done. Place files as mounted by docker-compose and restart Postgres:"
 echo "  docker compose up -d --force-recreate postgres"
-
