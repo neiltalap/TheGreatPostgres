@@ -54,6 +54,7 @@ INCLUDE_DEFAULT_DOCKER_SUBNET=true      # also allow 172.17.0.0/16
 DEFAULT_DOCKER_SUBNET=172.17.0.0/16
 PG_HBA_METHOD=scram-sha-256
 PG_HBA_HOST_CIDRS=10.0.0.0/8,192.168.0.0/16  # extra allowed ranges
+PG_HBA_METHOD=scram-sha-256                  # auth method for allowed hosts
 ```
 
 Notes:
@@ -124,6 +125,22 @@ BACKUP_SCHEDULE="0 2 * * *"  # Daily at 2 AM
 ```
 
 Note: No performance tuning variables are required — the Postgres container auto‑tunes memory, parallelism, and connection limits based on available resources.
+
+### Public Access (optional)
+
+If you need to allow a specific public client IP to connect directly to PostgreSQL:
+
+- Add the client IP (CIDR) to `PG_HBA_HOST_CIDRS` in your `.env`, for example:
+
+  `PG_HBA_HOST_CIDRS=65.109.161.209/32`
+
+- Expose Postgres on a public interface by changing the `postgres` service `ports` mapping in `docker-compose.yaml` from a private bind to a public one, for example:
+
+  `- "${SERVER_PUBLIC_IP:-0.0.0.0}:5432:5432"`
+
+  Replace or remove the existing private-only mapping. Ensure your firewall only allows source `65.109.161.209` on port `5432`.
+
+Security note: `pg_hba.conf` still enforces an allowlist and SCRAM auth, but exposing 5432 publicly will attract Internet scans. Prefer IP filtering at the firewall as an additional layer.
 
 ### 3. Cloudflare Tunnel Setup (pgAdmin)
 
