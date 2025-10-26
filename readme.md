@@ -162,6 +162,50 @@ Steps:
 
 Note: The Cloudflare Tunnel is for pgAdmin’s web UI only. Do not expose PostgreSQL (5432) over Cloudflare unless you use Cloudflare Spectrum (paid). Keep the database bound to private interfaces as configured in `docker-compose.yaml`.
 
+### 4. Enable TLS for PostgreSQL
+
+Transport encryption is enabled at the server level. Provide a certificate and key on the host and the container will use them:
+
+- Place your certificate and key in the `certs/` directory:
+  - `certs/server.crt` — PEM-encoded certificate (wildcard, issued by your CA, or self-signed)
+  - `certs/server.key` — PEM-encoded private key (must be mode 600)
+- Ensure strict permissions on the private key:
+
+```bash
+chmod 600 certs/server.key
+# Optional: adjust ownership to match the container's postgres user (commonly UID 999)
+sudo chown 999:999 certs/server.key certs/server.crt || true
+```
+
+The compose file mounts `./certs` into `/etc/postgresql/certs` and `postgresql.conf` is set to:
+
+```
+ssl = on
+ssl_cert_file = '/etc/postgresql/certs/server.crt'
+ssl_key_file = '/etc/postgresql/certs/server.key'
+ssl_min_protocol_version = 'TLSv1.2'
+```
+
+Restart Postgres to apply:
+
+```bash
+docker compose up -d --force-recreate postgres
+```
+
+Client connection examples:
+
+- Encrypt without verification (works with self-signed):
+
+```bash
+psql "host=<PUBLIC_IP> port=5432 dbname=production_db user=dbuser sslmode=require"
+```
+
+- Verify certificate (requires client trust store with your CA and hostname matching CN/SAN):
+
+```bash
+psql "host=pgdb.example.com port=5432 dbname=production_db user=dbuser sslmode=verify-full sslrootcert=ca.pem"
+```
+
 ### 2. One-Time Setup
 
 Run the setup command to initialize everything:
