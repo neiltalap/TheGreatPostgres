@@ -21,8 +21,6 @@ services:
       postgres
       -c config_file=/etc/postgresql/postgresql.conf
       -c hba_file=/etc/postgresql/pg_hba.conf
-    networks:
-      - postgres_network
     healthcheck:
       test:
         [
@@ -77,8 +75,6 @@ services:
       # Backup types
       WEEKLY_BACKUP: "yes"
       MONTHLY_BACKUP: "yes"
-    networks:
-      - postgres_network
     volumes:
       - ./client-certs:/client-certs:ro
     depends_on:
@@ -118,8 +114,6 @@ services:
       # Restore options
       DROP_PUBLIC: "yes"
       BACKUP_FILE: ${RESTORE_BACKUP_FILE:-latest}
-    networks:
-      - postgres_network
     volumes:
       - ./client-certs:/client-certs:ro
     depends_on:
@@ -136,9 +130,7 @@ services:
     environment:
       DATA_SOURCE_NAME: "postgresql://${POSTGRES_USER:-dbuser}@postgres:5432/${POSTGRES_DB:-production_db}?sslmode=verify-full&sslrootcert=/client-certs/ca.crt&sslcert=/client-certs/client.crt&sslkey=/client-certs/client.key"
     ports:
-      - "${SERVER_PRIVATE_IP:-10.0.0.2}:9187:9187"
-    networks:
-      - postgres_network
+      - "9187:9187"
     depends_on:
       postgres:
         condition: service_healthy
@@ -156,10 +148,3 @@ volumes:
       type: none
       o: bind
       device: /mnt/HC_Volume_103811804/pgdata
-
-networks:
-  postgres_network:
-    driver: bridge
-    ipam:
-      config:
-        - subnet: 172.20.0.0/16
