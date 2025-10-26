@@ -4,10 +4,12 @@ services:
     container_name: postgres-prod
     restart: unless-stopped
     environment:
-      POSTGRES_DB: ${POSTGRES_DB:-production_db}
       POSTGRES_USER: ${POSTGRES_USER:-dbuser}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Please set POSTGRES_PASSWORD}
       POSTGRES_INITDB_ARGS: "--auth-host=scram-sha-256 --auth-local=scram-sha-256"
+      # Use a subdirectory for PGDATA so first-init works even if the host mount
+      # contains system entries like lost+found
+      PGDATA: /var/lib/postgresql/data/pgdata
     ports:
       - "5432:5432"
     volumes:
@@ -25,7 +27,7 @@ services:
       test:
         [
           "CMD-SHELL",
-          "pg_isready -U ${POSTGRES_USER:-dbuser} -d ${POSTGRES_DB:-production_db}",
+          "pg_isready -U ${POSTGRES_USER:-dbuser} -d ${POSTGRES_DATABASE:-postgres}",
         ]
       interval: 30s
       timeout: 10s
@@ -51,7 +53,7 @@ services:
       # Database connection (internal network)
       POSTGRES_HOST: postgres
       POSTGRES_PORT: 5432
-      POSTGRES_DATABASE: ${POSTGRES_DB:-production_db}
+      POSTGRES_DATABASE: ${POSTGRES_DATABASE:-postgres}
       POSTGRES_USER: ${POSTGRES_USER:-dbuser}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
       POSTGRES_EXTRA_OPTS: "--schema=public --blobs --compress=9"
@@ -94,7 +96,7 @@ services:
       # Database connection
       POSTGRES_HOST: postgres
       POSTGRES_PORT: 5432
-      POSTGRES_DATABASE: ${POSTGRES_DB:-production_db}
+      POSTGRES_DATABASE: ${POSTGRES_DATABASE:-postgres}
       POSTGRES_USER: ${POSTGRES_USER:-dbuser}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
       # TLS client certs for mTLS to Postgres
@@ -128,7 +130,7 @@ services:
     container_name: postgres-exporter
     restart: unless-stopped
     environment:
-      DATA_SOURCE_NAME: "postgresql://${POSTGRES_USER:-dbuser}@postgres:5432/${POSTGRES_DB:-production_db}?sslmode=verify-full&sslrootcert=/client-certs/ca.crt&sslcert=/client-certs/client.crt&sslkey=/client-certs/client.key"
+      DATA_SOURCE_NAME: "postgresql://${POSTGRES_USER:-dbuser}@postgres:5432/${POSTGRES_DATABASE:-postgres}?sslmode=verify-full&sslrootcert=/client-certs/ca.crt&sslcert=/client-certs/client.crt&sslkey=/client-certs/client.key"
     ports:
       - "9187:9187"
     depends_on:
@@ -139,12 +141,6 @@ services:
     volumes:
       - ./client-certs:/client-certs:ro
 
-  
-
 volumes:
   postgres_data:
     driver: local
-    driver_opts:
-      type: none
-      o: bind
-      device: /mnt/HC_Volume_103811804/pgdata

@@ -17,12 +17,13 @@ Quickstart
    - If you see `Permission denied` for server.key in logs, run: `./fix-certs-perms.sh --restart`
 3) Start Postgres
    - `docker compose up -d postgres`
+   - Note: We use a PGDATA subdirectory so first initialization works even if the host mount (e.g., `/mnt/.../pgdata`) contains `lost+found`. The image initializes the cluster on first start. Application databases can be created later.
 4) Create extra DB users (if you generated additional client certs)
    - `docker exec -it postgres-prod psql -U postgres -c "CREATE ROLE appuser LOGIN;"`
    - The client cert CN must equal the Postgres role name
 5) Open firewall to 5432 for your allowed networks (mTLS required regardless)
 6) Test client connection (psql example)
-   - `psql "host=db.ozinozi.com port=5432 dbname=production_db user=dbuser sslmode=verify-full sslrootcert=ca.crt sslcert=client.crt sslkey=client.key"`
+   - `psql "host=db.ozinozi.com port=5432 dbname=postgres user=dbuser sslmode=verify-full sslrootcert=ca.crt sslcert=client.crt sslkey=client.key"`
 7) Configure and test backups
    - Put backup identity certs in `client-certs/` (e.g., create `--client backup` with the script)
    - `./backup-manager.sh setup` (validates S3, builds images, runs a test backup)

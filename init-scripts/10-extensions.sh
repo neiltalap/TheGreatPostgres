@@ -1,10 +1,11 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-echo "[init] Ensuring extensions (timescaledb, vector if available) in ${POSTGRES_DB} and template1" >&2
+DB_INIT_TARGET="${POSTGRES_DB:-postgres}"
+echo "[init] Ensuring extensions (timescaledb, vector if available) in ${DB_INIT_TARGET} and template1" >&2
 
 # Create in target database
-psql -v ON_ERROR_STOP=1 --username "$POSTGRES_USER" --dbname "$POSTGRES_DB" <<'EOSQL'
+psql -v ON_ERROR_STOP=1 --username "$POSTGRES_USER" --dbname "$DB_INIT_TARGET" <<'EOSQL'
 DO $$
 BEGIN
   IF EXISTS (SELECT 1 FROM pg_available_extensions WHERE name = 'timescaledb') THEN

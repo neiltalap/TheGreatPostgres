@@ -13,7 +13,7 @@ Place these files on the client machine:
 Connection string:
 
 ```
-psql "host=db.ozinozi.com port=5432 dbname=production_db user=dbuser \
+psql "host=db.ozinozi.com port=5432 dbname=postgres user=dbuser \
       sslmode=verify-full sslrootcert=ca.crt sslcert=client.crt sslkey=client.key"
 ```
 
@@ -22,7 +22,7 @@ Environment variables (alternative):
 ```
 export PGHOST=db.ozinozi.com
 export PGPORT=5432
-export PGDATABASE=production_db
+export PGDATABASE=postgres
 export PGUSER=dbuser
 export PGSSLMODE=verify-full
 export PGSSLROOTCERT=/path/to/ca.crt
@@ -56,7 +56,7 @@ const fs = require('fs');
 const client = new Client({
   host: 'db.ozinozi.com',
   port: 5432,
-  database: 'production_db',
+  database: 'postgres',
   user: 'dbuser',
   ssl: {
     ca: fs.readFileSync('ca.crt').toString(),
@@ -89,7 +89,7 @@ func main() {
   tlsConfig := &tls.Config{RootCAs: rootCAs, Certificates: []tls.Certificate{cert}, ServerName: "db.ozinozi.com"}
 
   conn, _ := pgx.Connect(context.Background(),
-    "host=db.ozinozi.com port=5432 dbname=production_db user=dbuser sslmode=verify-full")
+    "host=db.ozinozi.com port=5432 dbname=postgres user=dbuser sslmode=verify-full")
   // Attach tlsConfig via pgx ConnConfig if needed
   _ = conn
 }

@@ -206,25 +206,11 @@ setup_s3() {
     
     # Create the production_db database if it doesn't exist
     if docker compose ps postgres | grep -q "Up"; then
-        echo -e "${YELLOW}Ensuring production_db database exists...${NC}"
-        
-        # Check if database exists (run inside container)
-        DB_EXISTS=$(docker exec postgres-prod psql -U dbuser -t -c "SELECT 1 FROM pg_database WHERE datname = 'production_db';" 2>/dev/null | grep -c 1 || echo "0")
-        
-        if [ "$DB_EXISTS" = "0" ]; then
-            echo -e "${YELLOW}Creating production_db database...${NC}"
-            docker exec postgres-prod psql -U dbuser -c "CREATE DATABASE production_db;"
-            echo -e "${GREEN}✓ Database created${NC}"
-        else
-            echo -e "${GREEN}✓ Database already exists${NC}"
-        fi
-        
-        # Start backup service
+        # Start backup service and run a test backup if Postgres is up
         echo -e "${YELLOW}Starting backup service...${NC}"
         docker compose --profile backup up -d postgres-backup
         sleep 5
-        
-        # Test backup
+
         echo -e "${YELLOW}Testing backup...${NC}"
         create_backup
         echo -e "${GREEN}✓ Test backup completed${NC}"

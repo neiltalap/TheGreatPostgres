@@ -76,7 +76,7 @@ docker compose up -d --force-recreate postgres
 ```bash
 # On the client host
 # Connect directly to the server with client cert + CA verification
-psql "host=db.ozinozi.com port=5432 dbname=production_db user=dbuser \
+psql "host=db.ozinozi.com port=5432 dbname=postgres user=dbuser \
       sslmode=verify-full sslrootcert=ca.crt sslcert=client.crt sslkey=client.key"
 ```
 
