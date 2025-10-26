@@ -79,6 +79,7 @@ SELECT create_hypertable('metrics', by_range('time'), if_not_exists => TRUE);
 - PostgreSQL database running
 - S3-compatible storage account (AWS S3, Hetzner, MinIO, Cloudflare R2, etc.)
 - AWS CLI installed on host machine
+- Cloudflare account with a managed domain and a Cloudflare Tunnel token (required for secure pgAdmin access)
 
 ## 🔧 Initial Setup
 
@@ -113,12 +114,34 @@ HETZNER_S3_ENDPOINT=
 HETZNER_S3_REGION=us-east-1
 HETZNER_S3_BUCKET=my-backups-bucket
 
+# Cloudflare Tunnel (required for pgAdmin access)
+# Create a Tunnel in Cloudflare and copy the connector token here.
+CLOUDFLARE_TUNNEL_TOKEN=your-cloudflare-tunnel-token
+
 # Backup Configuration
 BACKUP_RETENTION_DAYS=1825  # 5 years retention
 BACKUP_SCHEDULE="0 2 * * *"  # Daily at 2 AM
 ```
 
 Note: No performance tuning variables are required — the Postgres container auto‑tunes memory, parallelism, and connection limits based on available resources.
+
+### 3. Cloudflare Tunnel Setup (pgAdmin)
+
+pgAdmin is not exposed on host ports. Access is provided securely via Cloudflare Tunnel.
+
+Steps:
+
+1) In Cloudflare Dashboard → Zero Trust → Tunnels, create a new tunnel and choose the token/connector method.  
+2) Copy the tunnel token into your `.env` as `CLOUDFLARE_TUNNEL_TOKEN` (see above).  
+3) In the tunnel’s Public Hostnames, add a hostname (e.g., `pgadmin.yourdomain.com`) and set:  
+   - Type: HTTP  
+   - URL/Service: `http://pgadmin:80`  
+   The `pgadmin` hostname is the Docker service name, resolvable inside the `cloudflared` container.
+4) Optionally add an Access policy (SSO) for the hostname in Cloudflare.  
+5) Start services: `docker compose up -d pgadmin cloudflare-tunnel` (or bring up the whole stack).  
+6) Visit `https://pgadmin.yourdomain.com` and log in with `PGADMIN_EMAIL` / `PGADMIN_PASSWORD`.
+
+Note: The Cloudflare Tunnel is for pgAdmin’s web UI only. Do not expose PostgreSQL (5432) over Cloudflare unless you use Cloudflare Spectrum (paid). Keep the database bound to private interfaces as configured in `docker-compose.yaml`.
 
 ### 2. One-Time Setup
 
