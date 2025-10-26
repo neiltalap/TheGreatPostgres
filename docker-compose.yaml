@@ -8,8 +8,8 @@ services:
       POSTGRES_USER: ${POSTGRES_USER:-dbuser}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Please set POSTGRES_PASSWORD}
       POSTGRES_INITDB_ARGS: "--auth-host=scram-sha-256 --auth-local=scram-sha-256"
-    # No host port exposure; reachable via Docker network and Cloudflare Tunnel
-    ports: []
+    ports:
+      - "5432:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
       - ./init-scripts:/docker-entrypoint-initdb.d:ro
@@ -145,18 +145,7 @@ services:
     profiles:
       - monitoring
 
-  # Cloudflare Tunnel for secure pgAdmin access
-  cloudflare-tunnel:
-    image: cloudflare/cloudflared:latest
-    container_name: cloudflare-tunnel
-    restart: unless-stopped
-    environment:
-      # Your Cloudflare tunnel token
-      TUNNEL_TOKEN: ${CLOUDFLARE_TUNNEL_TOKEN:?Please set CLOUDFLARE_TUNNEL_TOKEN}
-    command: tunnel --no-autoupdate run
-    networks:
-      - postgres_network
-    depends_on: {}
+  
 
 volumes:
   postgres_data:
@@ -165,8 +154,6 @@ volumes:
       type: none
       o: bind
       device: /mnt/HC_Volume_103811804/pgdata
-  pgadmin_data:
-    driver: local
 
 networks:
   postgres_network:

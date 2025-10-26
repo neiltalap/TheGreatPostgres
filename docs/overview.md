@@ -1,7 +1,7 @@
 # Overview
 
 - Postgres 17 (alpine) with static configs.
-- Access via Cloudflare Tunnel TCP (no public 5432 exposure).
+- Public access over TLS (port 5432) with mutual TLS (mTLS).
 - Authentication: TLS client certificates only (no passwords).
 - Backups to S3-compatible storage; restore tooling included.
 

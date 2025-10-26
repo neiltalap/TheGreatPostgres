@@ -71,14 +71,12 @@ Restart Postgres after placing certs:
 docker compose up -d --force-recreate postgres
 ```
 
-## Connect via Cloudflare Tunnel with mTLS
+## Connect over the Internet with mTLS
 
 ```bash
 # On the client host
-cloudflared access tcp --hostname db.ozinozi.com --url 127.0.0.1:15432
-
-# Then connect with client cert + CA verification
-psql "host=127.0.0.1 port=15432 dbname=production_db user=dbuser \
+# Connect directly to the server with client cert + CA verification
+psql "host=db.ozinozi.com port=5432 dbname=production_db user=dbuser \
       sslmode=verify-full sslrootcert=ca.crt sslcert=client.crt sslkey=client.key"
 ```
 
