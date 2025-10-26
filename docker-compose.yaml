@@ -22,13 +22,13 @@ services:
       prompt = no
 
       [req_distinguished_name]
-      CN = ${POSTGRES_SSL_CN}
+      CN = $${POSTGRES_SSL_CN}
 
       [v3_req]
-      subjectAltName = ${POSTGRES_SSL_SAN}
+      subjectAltName = $${POSTGRES_SSL_SAN}
       EOF
         ; \
-        openssl req -x509 -nodes -newkey rsa:4096 -days "$POSTGRES_SSL_DAYS" \
+        openssl req -x509 -nodes -newkey rsa:4096 -days "$$POSTGRES_SSL_DAYS" \
           -keyout /output/server.key -out /output/server.crt \
           -config /tmp/openssl.cnf -sha256; \
         chmod 600 /output/server.key; \
