@@ -100,3 +100,25 @@ Commands
 Notes
 - Backup/restore containers authenticate to Postgres with client certs mounted from `client-certs/` (no passwords).
 - S3 provider is configurable via `.env` (AWS, Hetzner, MinIO, R2, etc.).
+
+---
+
+## fix-certs-perms.sh
+
+Fixes ownership and permissions of server TLS files on the host so the Postgres process inside the container can read them.
+
+Usage
+
+```
+./fix-certs-perms.sh [--container postgres-prod] [--certs certs] [--restart]
+```
+
+What it does
+- Detects the postgres UID:GID inside the container (fallbacks to the image if needed)
+- chown <uid>:<gid> certs/server.key certs/server.crt certs/ca.crt
+- chmod 600 certs/server.key; chmod 644 certs/*.crt; chmod 755 certs/
+- Optionally restarts the container with `--restart`
+
+When to run it
+- If logs show: `FATAL: could not load private key file "/etc/postgresql/certs/server.key": Permission denied`
+- After generating/replacing certs to ensure ownership matches the running container user

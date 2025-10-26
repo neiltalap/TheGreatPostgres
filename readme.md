@@ -14,6 +14,7 @@ Quickstart
    - `./generate-certs.sh --cn db.ozinozi.com --client dbuser`
    - Places files under `certs/` (server, ca) and `client-certs/` (client)
    - Script auto-sets permissions; it also attempts `chown 999:999` on server certs (optional)
+   - If you see `Permission denied` for server.key in logs, run: `./fix-certs-perms.sh --restart`
 3) Start Postgres
    - `docker compose up -d postgres`
 4) Create extra DB users (if you generated additional client certs)
