@@ -13,8 +13,8 @@ services:
       PG_HBA_HOST_CIDRS: ${PG_HBA_HOST_CIDRS:-65.109.161.209/32}
       # Authentication method for pg_hba.conf entries
       PG_HBA_METHOD: ${PG_HBA_METHOD:-scram-sha-256}
-    ports:
-      - "5432:5432"
+    # No host port exposure; reachable via Docker network and Cloudflare Tunnel
+    ports: []
     volumes:
       - postgres_data:/var/lib/postgresql/data
       - ./init-scripts:/docker-entrypoint-initdb.d:ro

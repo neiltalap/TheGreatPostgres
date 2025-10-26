@@ -100,14 +100,34 @@ Note: Performance tuning is via the tracked `postgresql.conf`. Adjust it directl
 
 ### Network Access
 
-- Default: Postgres listens on all interfaces (host port `5432`) and `pg_hba.conf` allows TLS connections from any IP. Strong credentials are required.
-- Restricting access: Edit `pg_hba.conf` to replace the open `hostssl` rules for `0.0.0.0/0` and `::/0` with specific CIDRs, e.g.:
+- Default: Postgres is not exposed on the host. It is reachable only on the Docker network and via Cloudflare Tunnel.
+- Restricting access: `pg_hba.conf` allows TLS connections from the Docker subnet by default. Edit it to further limit access if needed, then recreate Postgres: `docker compose up -d --force-recreate postgres`.
+- Firewall: Keep port 5432 closed publicly on the host (no port mapping is present).
 
-  `hostssl all all 203.0.113.10/32 scram-sha-256`
-  `hostssl all all 2001:db8::/64 scram-sha-256`
+### Cloudflare Tunnel for Postgres (TCP)
 
-  Then recreate Postgres: `docker compose up -d --force-recreate postgres`.
-- Firewall: Add host-level firewall rules to match your CIDRs for defense-in-depth.
+Expose Postgres safely over Cloudflare Tunnel without opening any public ports. You already run `cloudflare-tunnel`; add a TCP endpoint in the Dashboard:
+
+Server-side (Cloudflare Dashboard):
+- Zero Trust → Networks → Tunnels → your tunnel → Public Hostnames → Add a public hostname
+  - Hostname: `db.yourdomain.com`
+  - Type: `TCP`
+  - Service: `tcp://postgres:5432`  (Docker service name + port)
+  - Optional: Add an Access policy (SSO) to restrict who can connect
+
+Client-side:
+- Install `cloudflared` on the client machine.
+- Start a local TCP listener that proxies to your DB over Cloudflare:
+
+  `cloudflared access tcp --hostname db.yourdomain.com --url 127.0.0.1:15432`
+
+- Connect your DB client to the local port with TLS (server enforces TLS):
+
+  `psql "host=127.0.0.1 port=15432 dbname=production_db user=dbuser sslmode=require"`
+
+Notes:
+- The tunnel encrypts traffic; Postgres also requires TLS at the server.
+- No host port is exposed; the origin is accessible only from containers on the Docker network and from Cloudflare via the tunnel.
 
 ### 3. Cloudflare Tunnel Setup (pgAdmin)
 
