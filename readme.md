@@ -1,11 +1,11 @@
 # PostgreSQL Backup System - Complete Guide
 
-A comprehensive PostgreSQL backup solution with automated S3 storage, Docker-based deployment, and flexible restore options.
+A comprehensive PostgreSQL backup solution with automated S3-compatible storage, Docker-based deployment, and flexible restore options.
 
 ## 🚀 Features
 
 - **Automated Backups**: Daily backups at 2 AM UTC with weekly and monthly retention
-- **S3 Storage**: Secure cloud storage with Hetzner S3 (or any S3-compatible service)
+- **S3-Compatible Storage**: Works with AWS S3, Hetzner, MinIO, Cloudflare R2, and other S3 providers
 - **PostgreSQL 17 Compatible**: Matches your PostgreSQL 17.5 server version
 - **Docker-Based**: Containerized backup and restore services
 - **Flexible Scheduling**: Configurable backup schedules via cron
@@ -13,11 +13,71 @@ A comprehensive PostgreSQL backup solution with automated S3 storage, Docker-bas
 - **Compression**: Gzip compression to minimize storage costs
 - **Easy Management**: Simple command-line interface
 
+## ⚙️ Auto-Tuned PostgreSQL + Extensions
+
+The container now auto-generates `postgresql.conf` and `pg_hba.conf` on startup based on container resources and environment variables. No need to hand-edit config files.
+
+Additionally, the Postgres service uses the official TimescaleDB image (`timescale/timescaledb:latest-pg17`). On first initialization, the init scripts enable `timescaledb` and will also enable `vector` if the image includes pgvector.
+
+- Detection: Reads cgroup limits to detect memory and CPU cores
+- Tuning: Sets `shared_buffers`, `effective_cache_size`, `work_mem`, and parallel workers
+- Access: Generates `pg_hba.conf` from your network CIDRs; denies all else
+
+Environment overrides (optional):
+
+```
+# Resource hints (override auto-detection)
+PG_MEMORY_MB=8192
+
+# Connection limits
+PG_MAX_CONNECTIONS=400
+POSTGRES_MAX_CONNECTIONS=400
+
+# Memory (choose either PG_* in MB or POSTGRES_* with units like 2GB)
+PG_SHARED_BUFFERS_MB=2048
+PG_EFFECTIVE_CACHE_MB=6144
+PG_WORK_MEM_MB=10
+PG_MAINTENANCE_WORK_MEM_MB=512
+POSTGRES_SHARED_BUFFERS=2GB
+POSTGRES_EFFECTIVE_CACHE_SIZE=6GB
+POSTGRES_WORK_MEM=10MB
+POSTGRES_MAINTENANCE_WORK_MEM=512MB
+
+# SSL and password encryption
+PG_SSL=off
+POSTGRES_SSL=off
+PG_PASSWORD_ENCRYPTION=scram-sha-256
+
+# pg_hba.conf generation
+POSTGRES_NETWORK_SUBNET=172.20.0.0/16   # compose bridge subnet
+INCLUDE_DEFAULT_DOCKER_SUBNET=true      # also allow 172.17.0.0/16
+DEFAULT_DOCKER_SUBNET=172.17.0.0/16
+PG_HBA_METHOD=scram-sha-256
+PG_HBA_HOST_CIDRS=10.0.0.0/8,192.168.0.0/16  # extra allowed ranges
+```
+
+Notes:
+
+- The service runs with `command: ["bash", "/config/render-config.sh"]` and no longer mounts static `postgresql.conf`/`pg_hba.conf` files (these files were removed).
+- To lock values precisely, set the `POSTGRES_*` variables with units (e.g., `2GB`).
+- Otherwise, the script auto-tunes from memory/CPU limits and `PG_*` MB overrides.
+- TimescaleDB is preloaded automatically if present; you can force preload by setting `PG_SHARED_PRELOAD_LIBRARIES`.
+- Extensions are created via `init-scripts/10-extensions.sh` when the data directory is initialized. If you already have data, run the `CREATE EXTENSION` statements manually.
+- If you require `pgvector` and your image doesn’t include it, switch back to a custom image that installs `postgresql-17-pgvector` or build from source (we previously supported this).
+
+Example to create a hypertable after your app creates a table:
+
+```
+-- after creating a regular table with a timestamptz column "time"
+SELECT timescaledb_pre_restore(); -- if converting existing table, optional
+SELECT create_hypertable('metrics', by_range('time'), if_not_exists => TRUE);
+```
+
 ## 📋 Prerequisites
 
 - Docker and Docker Compose installed
 - PostgreSQL database running
-- S3-compatible storage account (Hetzner S3, AWS S3, etc.)
+- S3-compatible storage account (AWS S3, Hetzner, MinIO, Cloudflare R2, etc.)
 - AWS CLI installed on host machine
 
 ## 🔧 Initial Setup
@@ -32,7 +92,7 @@ POSTGRES_DB=dbname
 POSTGRES_USER=admin
 POSTGRES_PASSWORD=password
 
-# pgAdmin Configuration (publicly accessible)
+# pgAdmin Configuration (access via Cloudflare Tunnel)
 PGADMIN_EMAIL=email@email.com
 PGADMIN_PASSWORD=password
 PGADMIN_PORT=8080
@@ -41,25 +101,24 @@ PGADMIN_PORT=8080
 SERVER_PRIVATE_IP=0.0.0.0
 SERVER_PUBLIC_IP=0.0.0.0
 
-# Hetzner Object Storage (S3) Configuration
-HETZNER_S3_ACCESS_KEY=key
-HETZNER_S3_SECRET_KEY=key
-HETZNER_S3_ENDPOINT=https://something.com
-HETZNER_S3_REGION=eu-west
-HETZNER_S3_BUCKET=password
-
-# PostgreSQL Performance Settings (optimized for dedicated server)
-# Adjust these based on your actual server specs
-POSTGRES_MAX_CONNECTIONS=500
-POSTGRES_SHARED_BUFFERS=2GB
-POSTGRES_EFFECTIVE_CACHE_SIZE=6GB
-POSTGRES_WORK_MEM=16MB
-POSTGRES_MAINTENANCE_WORK_MEM=512MB
+# S3-Compatible Storage Configuration (AWS, Hetzner, MinIO, R2, ...)
+# Note: Names use the "HETZNER_*" prefix but work with ANY S3-compatible provider.
+# docker-compose maps these into the containers as generic S3_* variables.
+#
+# For AWS S3: leave HETZNER_S3_ENDPOINT empty and set HETZNER_S3_REGION accordingly.
+# For other providers: set both region (if applicable) and endpoint URL.
+HETZNER_S3_ACCESS_KEY=your-access-key
+HETZNER_S3_SECRET_KEY=your-secret-key
+HETZNER_S3_ENDPOINT=
+HETZNER_S3_REGION=us-east-1
+HETZNER_S3_BUCKET=my-backups-bucket
 
 # Backup Configuration
 BACKUP_RETENTION_DAYS=1825  # 5 years retention
 BACKUP_SCHEDULE="0 2 * * *"  # Daily at 2 AM
 ```
+
+Note: No performance tuning variables are required — the Postgres container auto‑tunes memory, parallelism, and connection limits based on available resources.
 
 ### 2. One-Time Setup
 
@@ -417,6 +476,31 @@ Example: `production_db_2025-06-13T08:43:16Z.sql.gz`
 
 ### Environment Variables
 
+The backup/restore containers use generic `S3_*` variables. The `.env` you edit uses `HETZNER_S3_*` names which are mapped into the containers by `docker-compose.yaml`. This makes the setup provider‑agnostic while keeping the code consistent.
+
+S3 settings inside containers (effective variables):
+
+| Variable | Description | Default | Required |
+|----------|-------------|---------|----------|
+| `S3_ACCESS_KEY_ID` | S3 access key | - | ✅ |
+| `S3_SECRET_ACCESS_KEY` | S3 secret key | - | ✅ |
+| `S3_BUCKET` | S3 bucket name | - | ✅ |
+| `S3_REGION` | S3 region | `us-west-1` | No |
+| `S3_ENDPOINT` | S3 endpoint URL | - | For non-AWS |
+| `S3_PREFIX` | S3 path prefix | `backup` | No |
+
+Mapping from `.env` to container variables:
+
+| `.env` key | Container env |
+|------------|---------------|
+| `HETZNER_S3_ACCESS_KEY` | `S3_ACCESS_KEY_ID` |
+| `HETZNER_S3_SECRET_KEY` | `S3_SECRET_ACCESS_KEY` |
+| `HETZNER_S3_BUCKET` | `S3_BUCKET` |
+| `HETZNER_S3_REGION` | `S3_REGION` |
+| `HETZNER_S3_ENDPOINT` | `S3_ENDPOINT` |
+
+Database and scheduling variables:
+
 | Variable | Description | Default | Required |
 |----------|-------------|---------|----------|
 | `POSTGRES_DB` | Database name | `production_db` | ✅ |
@@ -424,12 +508,6 @@ Example: `production_db_2025-06-13T08:43:16Z.sql.gz`
 | `POSTGRES_PASSWORD` | Database password | - | ✅ |
 | `POSTGRES_HOST` | Database host | `postgres` | No |
 | `POSTGRES_PORT` | Database port | `5432` | No |
-| `S3_ACCESS_KEY_ID` | S3 access key | - | ✅ |
-| `S3_SECRET_ACCESS_KEY` | S3 secret key | - | ✅ |
-| `S3_BUCKET` | S3 bucket name | - | ✅ |
-| `S3_REGION` | S3 region | `us-west-1` | No |
-| `S3_ENDPOINT` | S3 endpoint URL | - | For non-AWS |
-| `S3_PREFIX` | S3 path prefix | `backup` | No |
 | `BACKUP_RETENTION_DAYS` | Days to keep backups | `30` | No |
 | `WEEKLY_BACKUP` | Enable weekly backups | `yes` | No |
 | `MONTHLY_BACKUP` | Enable monthly backups | `yes` | No |
@@ -518,19 +596,26 @@ aws s3 ls s3://your-bucket/backup/daily/ --endpoint-url YOUR_ENDPOINT
 ## 📁 File Structure
 
 ```
-postgres/
-├── backup-manager.sh           # Main management script
+TheGreatPostgres/
+├── backup-manager.sh           # Main management script (host)
 ├── docker-compose.yaml         # Service definitions
-├── .env                       # Environment configuration
+├── readme.md                   # This guide
+├── .env                        # Environment configuration (you create this)
 ├── backup/
-│   ├── Dockerfile            # Backup container image
+│   ├── Dockerfile              # Backup container image
 │   └── scripts/
-│       ├── backup.sh         # Backup execution script
-│       └── run.sh           # Container startup script
-└── restore/
-    ├── Dockerfile           # Restore container image
-    └── scripts/
-        └── restore.sh       # Restore execution script
+│       ├── backup.sh           # Backup execution script (in container)
+│       └── run.sh              # Container startup and scheduling
+├── restore/
+│   ├── Dockerfile              # Restore container image
+│   └── scripts/
+│       └── restore.sh          # Restore execution script (in container)
+├── config/
+│   └── render-config.sh        # Auto-tunes PostgreSQL config at startup
+├── init-scripts/
+│   └── 10-extensions.sh        # Enables TimescaleDB (+ pgvector if present)
+├── pgadmin-servers.json        # Preconfigured pgAdmin connection
+└── (data volumes configured in docker-compose)
 ```
 
 ## 🔐 Security Best Practices
