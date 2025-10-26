@@ -12,30 +12,28 @@ A comprehensive PostgreSQL backup solution with automated S3-compatible storage,
 - **Retention Management**: Automatic cleanup of old backups
 - **Compression**: Gzip compression to minimize storage costs
 - **Easy Management**: Simple command-line interface
-- **TLS-Only Access**: All TCP connections require SSL/TLS (hostssl)
+ 
 
-## ⚙️ PostgreSQL + TLS + Extensions
+## ⚙️ PostgreSQL + Extensions
 
-This stack uses the official Postgres image with static, versioned configs and TLS enforced.
+This stack uses the official Postgres image with static, versioned configs. Postgres is not exposed publicly; access is via Cloudflare Tunnel.
 
 Key points:
 
-- Image: `postgres:17.5-alpine` exposed on `5432:5432`.
-- Configs: `postgresql.conf` (SSL on) and `pg_hba.conf` (TLS-only via `hostssl`) are mounted read-only.
-- Access: By default, `pg_hba.conf` permits TLS from any IP (IPv4/IPv6). Edit it to restrict to specific CIDRs.
+- Image: `postgres:17.5-alpine` (no host port exposed).
+- Configs: `postgresql.conf` and `pg_hba.conf` are mounted read-only.
+- Access: `pg_hba.conf` permits connections from the Docker subnet. Edit it to restrict to specific CIDRs.
 - Auth: SCRAM password authentication.
 
 Extensions:
 
 - `init-scripts/10-extensions.sh` attempts to create `timescaledb` and `vector` when available. With the plain Postgres image, these may be absent; the script logs a notice and continues.
 
-- Detection: Reads cgroup limits to detect memory and CPU cores
-- Tuning: Sets `shared_buffers`, `effective_cache_size`, `work_mem`, and parallel workers
-- Access: Generates `pg_hba.conf` from your network CIDRs; denies all else
+ 
 
 Notes:
 
-- To restrict access, replace the open `hostssl` rules for `0.0.0.0/0` and `::/0` in `pg_hba.conf` with specific CIDRs, then recreate the container.
+- To restrict access, edit CIDRs in `pg_hba.conf`, then recreate the container.
 - If you require `timescaledb`/`vector`, use an image that includes them or build your own.
 
 Example to create a hypertable after your app creates a table:
@@ -119,14 +117,14 @@ Client-side:
 - Install `cloudflared` on the client machine.
 - Start a local TCP listener that proxies to your DB over Cloudflare:
 
-  `cloudflared access tcp --hostname db.yourdomain.com --url 127.0.0.1:15432`
+  cloudflared access tcp --hostname db.yourdomain.com --url 127.0.0.1:15432
 
 - Connect your DB client to the local port with TLS (server enforces TLS):
 
-  `psql "host=127.0.0.1 port=15432 dbname=production_db user=dbuser sslmode=require"`
+  psql "host=127.0.0.1 port=15432 dbname=production_db user=dbuser sslmode=disable"
 
 Notes:
-- The tunnel encrypts traffic; Postgres also requires TLS at the server.
+- The tunnel encrypts traffic end‑to‑end; server-side TLS is not required.
 - No host port is exposed; the origin is accessible only from containers on the Docker network and from Cloudflare via the tunnel.
 
 ### 3. Cloudflare Tunnel Setup (pgAdmin)
@@ -147,76 +145,7 @@ Steps:
 
 Note: The Cloudflare Tunnel is for pgAdmin’s web UI only. Do not expose PostgreSQL (5432) over Cloudflare unless you use Cloudflare Spectrum (paid). Keep the database bound to private interfaces as configured in `docker-compose.yaml`.
 
-### 4. Enable TLS for PostgreSQL
 
-Transport encryption is enabled at the server level. Provide a certificate and key on the host and the container will use them:
-
-- Place your certificate and key in the `certs/` directory:
-  - `certs/server.crt` — PEM-encoded certificate (wildcard, issued by your CA, or self-signed)
-  - `certs/server.key` — PEM-encoded private key (must be mode 600)
-- Ensure strict permissions on the private key:
-
-```bash
-chmod 600 certs/server.key
-# Optional: adjust ownership to match the container's postgres user (commonly UID 999)
-sudo chown 999:999 certs/server.key certs/server.crt || true
-```
-
-The compose file mounts `./certs` into `/etc/postgresql/certs` and `postgresql.conf` is set to:
-
-```
-ssl = on
-ssl_cert_file = '/etc/postgresql/certs/server.crt'
-ssl_key_file = '/etc/postgresql/certs/server.key'
-ssl_min_protocol_version = 'TLSv1.2'
-```
-
-Restart Postgres to apply:
-
-```bash
-docker compose up -d --force-recreate postgres
-```
-
-Client connection examples:
-
-- Encrypt without verification (works with self-signed):
-
-```bash
-psql "host=<PUBLIC_IP> port=5432 dbname=production_db user=dbuser sslmode=require"
-```
-
-- Verify certificate (requires client trust store with your CA and hostname matching CN/SAN):
-
-```bash
-psql "host=pgdb.example.com port=5432 dbname=production_db user=dbuser sslmode=verify-full sslrootcert=ca.pem"
-
-Create a self-signed certificate
-
-If you don't have a CA-signed cert yet, you can generate a self-signed certificate with Subject Alternative Names (SAN) and place it into `certs/`:
-
-```bash
-mkdir -p certs
-
-# Customize these for your setup
-CN=db.example.com                 # or your.public.ip
-SAN="DNS:db.example.com,IP:203.0.113.10"  # at least one DNS or IP
-DAYS=365
-
-openssl req -x509 -nodes -newkey rsa:4096 -days "$DAYS" \
-  -keyout certs/server.key -out certs/server.crt \
-  -subj "/CN=$CN" -addext "subjectAltName=$SAN" -sha256
-
-chmod 600 certs/server.key
-sudo chown 999:999 certs/server.key certs/server.crt || true
-
-# Apply by recreating Postgres
-docker compose up -d --force-recreate postgres
-```
-
-Notes:
-- With a self-signed cert, clients can use `sslmode=require` to encrypt without verification.
-- For verification, use a cert signed by a CA trusted by your clients and `sslmode=verify-full`.
-```
 
 ### 2. One-Time Setup
 
