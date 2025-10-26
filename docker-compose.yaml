@@ -20,6 +20,9 @@ services:
             CN="${POSTGRES_SSL_CN:-postgres.local}"
             SAN="${POSTGRES_SSL_SAN:-DNS:postgres.local,IP:127.0.0.1}"
             DAYS="${POSTGRES_SSL_DAYS:-365}"
+            [ -n "$CN" ] || CN=postgres.local
+            [ -n "$SAN" ] || SAN="DNS:postgres.local,IP:127.0.0.1"
+            case "$DAYS" in ''|*[!0-9]*) DAYS=365 ;; esac
             openssl req -x509 -nodes -newkey rsa:4096 -days "$DAYS" \
               -keyout /output/server.key -out /output/server.crt \
               -subj "/CN=$CN" -addext "subjectAltName=$SAN" -sha256
