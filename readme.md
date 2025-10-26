@@ -12,6 +12,7 @@ Quickstart
    - `cp .env.example .env` (set S3 credentials and DB names/users)
 2) Generate TLS certs (CA, server with SAN, client per user)
    - `./generate-certs.sh --cn db.ozinozi.com --client dbuser`
+   - The script automatically adds `DNS:postgres` to the server certificate SANs so internal services (backup/restore/exporter) can connect using host `postgres` with `PGSSLMODE=verify-full`. You can add extra SANs with repeated `--san` flags.
    - Places files under `certs/` (server, ca) and `client-certs/` (client)
    - Script auto-sets permissions; it also attempts `chown 999:999` on server certs (optional)
    - If you see `Permission denied` for server.key in logs, run: `./fix-certs-perms.sh --restart`
@@ -28,6 +29,8 @@ Quickstart
    - Put backup identity certs in `client-certs/` (e.g., create `--client backup` with the script)
    - `./backup-manager.sh setup` (validates S3, builds images, runs a test backup)
    - `./backup-manager.sh list` (verify uploaded backup)
+   - If the backup service reports it cannot connect and your server cert was generated without `DNS:postgres`, re-run cert generation with `--force` or set `PGSSLMODE=verify-ca` for backup/restore in `docker-compose.yaml`.
+   - To back up ALL databases and roles, set `BACKUP_SCOPE=cluster` in your `.env` (requires the backup user to be a superuser). Database-only backups remain the default.
 8) Optional: run exporter (Prometheus metrics on 9187)
    - `docker compose up -d postgres-exporter`
 

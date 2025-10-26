@@ -4,8 +4,17 @@ set -o pipefail
 
 echo "$(date): Starting PostgreSQL backup..."
 
+# Backup scope: 'database' (single DB) or 'cluster' (all DBs)
+BACKUP_SCOPE=${BACKUP_SCOPE:-database}
+
 # Validate environment variables
-for var in S3_ACCESS_KEY_ID S3_SECRET_ACCESS_KEY S3_BUCKET POSTGRES_DATABASE POSTGRES_HOST POSTGRES_USER POSTGRES_PASSWORD; do
+# For 'cluster' scope, POSTGRES_DATABASE is not required for dump but may be used elsewhere
+REQUIRED_VARS="S3_ACCESS_KEY_ID S3_SECRET_ACCESS_KEY S3_BUCKET POSTGRES_HOST POSTGRES_USER POSTGRES_PASSWORD"
+if [ "${BACKUP_SCOPE}" = "database" ]; then
+    REQUIRED_VARS="$REQUIRED_VARS POSTGRES_DATABASE"
+fi
+
+for var in $REQUIRED_VARS; do
     eval value=\$${var}
     if [ "${value}" = "**None**" ] || [ -z "${value}" ]; then
         echo "Error: ${var} environment variable is required"
@@ -31,7 +40,11 @@ fi
 
 # Generate backup filename with timestamp
 BACKUP_DATE=$(date +"%Y-%m-%dT%H:%M:%SZ")
-BACKUP_FILE="${POSTGRES_DATABASE}_${BACKUP_DATE}.sql"
+if [ "${BACKUP_SCOPE}" = "cluster" ]; then
+    BACKUP_FILE="cluster_${BACKUP_DATE}.sql"
+else
+    BACKUP_FILE="${POSTGRES_DATABASE}_${BACKUP_DATE}.sql"
+fi
 COMPRESSED_FILE="${BACKUP_FILE}.gz"
 
 # Determine backup type based on date
@@ -61,15 +74,24 @@ fi
 
 echo "✓ Database connection successful"
 
-# Create database backup
-echo "Creating database dump..."
-pg_dump ${POSTGRES_HOST_OPTS} \
-    -d "${POSTGRES_DATABASE}" \
-    ${POSTGRES_EXTRA_OPTS} \
-    --verbose \
-    --no-owner \
-    --no-privileges \
-    > "/tmp/backup/${BACKUP_FILE}"
+if [ "${BACKUP_SCOPE}" = "cluster" ]; then
+    echo "Creating cluster dump (all databases + globals)..."
+    # Note: pg_dumpall does not accept db-specific options like --schema.
+    # It requires sufficient privileges (typically superuser) to dump roles and databases.
+    pg_dumpall ${POSTGRES_HOST_OPTS} \
+        --clean --if-exists \
+        > "/tmp/backup/${BACKUP_FILE}"
+else
+    # Create single database backup
+    echo "Creating database dump..."
+    pg_dump ${POSTGRES_HOST_OPTS} \
+        -d "${POSTGRES_DATABASE}" \
+        ${POSTGRES_EXTRA_OPTS} \
+        --verbose \
+        --no-owner \
+        --no-privileges \
+        > "/tmp/backup/${BACKUP_FILE}"
+fi
 
 if [ ! -f "/tmp/backup/${BACKUP_FILE}" ] || [ ! -s "/tmp/backup/${BACKUP_FILE}" ]; then
     echo "Error: Backup file creation failed or file is empty"

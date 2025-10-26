@@ -54,14 +54,16 @@ services:
       POSTGRES_HOST: postgres
       POSTGRES_PORT: 5432
       POSTGRES_DATABASE: ${POSTGRES_DATABASE:-postgres}
-      POSTGRES_USER: ${POSTGRES_USER:-dbuser}
+      POSTGRES_USER: ${BACKUP_USER:-admin}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
       POSTGRES_EXTRA_OPTS: "--schema=public --blobs --compress=9"
+      # Backup scope: 'database' (single DB) or 'cluster' (all DBs)
+      BACKUP_SCOPE: ${BACKUP_SCOPE:-database}
       # TLS client certs for mTLS to Postgres
       PGSSLMODE: ${PGSSLMODE:-verify-full}
-      PGSSLROOTCERT: ${PGSSLROOTCERT:-/client-certs/ca.crt}
-      PGSSLCERT: ${PGSSLCERT:-/client-certs/client.crt}
-      PGSSLKEY: ${PGSSLKEY:-/client-certs/client.key}
+      PGSSLROOTCERT: ${PGSSLROOTCERT:-/certs/ca.crt}
+      PGSSLCERT: ${PGSSLCERT:-/client-certs/admin.crt}
+      PGSSLKEY: ${PGSSLKEY:-/client-certs/admin.key}
 
       # S3 configuration
       S3_ACCESS_KEY_ID: ${HETZNER_S3_ACCESS_KEY}
@@ -79,6 +81,7 @@ services:
       MONTHLY_BACKUP: "yes"
     volumes:
       - ./client-certs:/client-certs:ro
+      - ./certs:/certs:ro
     depends_on:
       postgres:
         condition: service_healthy
@@ -97,13 +100,13 @@ services:
       POSTGRES_HOST: postgres
       POSTGRES_PORT: 5432
       POSTGRES_DATABASE: ${POSTGRES_DATABASE:-postgres}
-      POSTGRES_USER: ${POSTGRES_USER:-dbuser}
+      POSTGRES_USER: ${RESTORE_USER:-admin}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
       # TLS client certs for mTLS to Postgres
       PGSSLMODE: ${PGSSLMODE:-verify-full}
-      PGSSLROOTCERT: ${PGSSLROOTCERT:-/client-certs/ca.crt}
-      PGSSLCERT: ${PGSSLCERT:-/client-certs/client.crt}
-      PGSSLKEY: ${PGSSLKEY:-/client-certs/client.key}
+      PGSSLROOTCERT: ${PGSSLROOTCERT:-/certs/ca.crt}
+      PGSSLCERT: ${PGSSLCERT:-/client-certs/admin.crt}
+      PGSSLKEY: ${PGSSLKEY:-/client-certs/admin.key}
 
       # S3 configuration
       S3_ACCESS_KEY_ID: ${HETZNER_S3_ACCESS_KEY}
@@ -118,6 +121,7 @@ services:
       BACKUP_FILE: ${RESTORE_BACKUP_FILE:-latest}
     volumes:
       - ./client-certs:/client-certs:ro
+      - ./certs:/certs:ro
     depends_on:
       postgres:
         condition: service_healthy
@@ -130,7 +134,7 @@ services:
     container_name: postgres-exporter
     restart: unless-stopped
     environment:
-      DATA_SOURCE_NAME: "postgresql://${POSTGRES_USER:-dbuser}@postgres:5432/${POSTGRES_DATABASE:-postgres}?sslmode=verify-full&sslrootcert=/client-certs/ca.crt&sslcert=/client-certs/client.crt&sslkey=/client-certs/client.key"
+      DATA_SOURCE_NAME: "postgresql://${POSTGRES_USER:-dbuser}@${POSTGRES_HOST:-postgres}:${POSTGRES_PORT:-5432}/${POSTGRES_DATABASE:-postgres}?sslmode=${PGSSLMODE:-verify-full}&sslrootcert=${PGSSLROOTCERT:-/client-certs/ca.crt}&sslcert=${PGSSLCERT:-/client-certs/client.crt}&sslkey=${PGSSLKEY:-/client-certs/client.key}"
     ports:
       - "9187:9187"
     depends_on:

@@ -9,6 +9,7 @@ echo "  Host: ${POSTGRES_HOST}:${POSTGRES_PORT}"
 echo "  S3 Bucket: ${S3_BUCKET}"
 echo "  Schedule: ${SCHEDULE}"
 echo "  Retention: ${BACKUP_RETENTION_DAYS} days"
+echo "  Scope: ${BACKUP_SCOPE:-database}"
 
 # Configure AWS CLI
 if [ "${S3_ACCESS_KEY_ID}" != "**None**" ]; then

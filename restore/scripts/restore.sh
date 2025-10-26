@@ -101,6 +101,12 @@ fi
 
 echo "✓ Backup decompressed"
 
+# Detect if this is a cluster (pg_dumpall) dump
+IS_CLUSTER_DUMP=false
+if head -n 5 "${DECOMPRESSED_FILE}" | grep -qi "database cluster dump"; then
+    IS_CLUSTER_DUMP=true
+fi
+
 # Test database connection
 echo "Testing database connection..."
 if ! pg_isready -h "${POSTGRES_HOST}" -p "${POSTGRES_PORT}" -U "${POSTGRES_USER}"; then
@@ -110,18 +116,25 @@ fi
 
 echo "✓ Database connection successful"
 
-# Drop public schema if requested
-if [ "${DROP_PUBLIC}" = "yes" ]; then
-    echo "Dropping and recreating public schema..."
-    psql ${POSTGRES_HOST_OPTS} -d "${POSTGRES_DATABASE}" -c "DROP SCHEMA IF EXISTS public CASCADE; CREATE SCHEMA public;" || {
-        echo "Warning: Could not drop/recreate public schema"
-    }
-    echo "✓ Public schema recreated"
-fi
+if [ "${IS_CLUSTER_DUMP}" = true ]; then
+    echo "Detected cluster dump. Restoring roles, databases, and data..."
+    # For cluster dumps, ignore DROP_PUBLIC and feed the entire script to psql.
+    # Connect to the bootstrap database (default: postgres) and let pg_dumpall manage CREATE DATABASE and \connect.
+    psql ${POSTGRES_HOST_OPTS} -d "${POSTGRES_DATABASE}" -v ON_ERROR_STOP=1 -f "${DECOMPRESSED_FILE}"
+else
+    # Drop public schema if requested
+    if [ "${DROP_PUBLIC}" = "yes" ]; then
+        echo "Dropping and recreating public schema..."
+        psql ${POSTGRES_HOST_OPTS} -d "${POSTGRES_DATABASE}" -c "DROP SCHEMA IF EXISTS public CASCADE; CREATE SCHEMA public;" || {
+            echo "Warning: Could not drop/recreate public schema"
+        }
+        echo "✓ Public schema recreated"
+    fi
 
-# Restore database
-echo "Restoring database from backup..."
-psql ${POSTGRES_HOST_OPTS} -d "${POSTGRES_DATABASE}" < "${DECOMPRESSED_FILE}"
+    # Restore single database
+    echo "Restoring database from backup..."
+    psql ${POSTGRES_HOST_OPTS} -d "${POSTGRES_DATABASE}" -v ON_ERROR_STOP=1 -f "${DECOMPRESSED_FILE}"
+fi
 
 echo "✓ Database restore completed"
 
@@ -129,9 +142,15 @@ echo "✓ Database restore completed"
 rm -f "/tmp/${LATEST_BACKUP}" "${DECOMPRESSED_FILE}"
 echo "✓ Cleanup completed"
 
-# Verify restore
-echo "Verifying restore..."
-TABLE_COUNT=$(psql ${POSTGRES_HOST_OPTS} -d "${POSTGRES_DATABASE}" -t -c "SELECT COUNT(*) FROM information_schema.tables WHERE table_schema = 'public';" | xargs)
-echo "Tables restored: ${TABLE_COUNT}"
+if [ "${IS_CLUSTER_DUMP}" = true ]; then
+    echo "Verifying restore (cluster): counting non-template databases..."
+    DB_COUNT=$(psql ${POSTGRES_HOST_OPTS} -d postgres -t -c "SELECT count(*) FROM pg_database WHERE datistemplate=false;" | xargs)
+    echo "Databases present: ${DB_COUNT}"
+else
+    # Verify restore
+    echo "Verifying restore..."
+    TABLE_COUNT=$(psql ${POSTGRES_HOST_OPTS} -d "${POSTGRES_DATABASE}" -t -c "SELECT COUNT(*) FROM information_schema.tables WHERE table_schema = 'public';" | xargs)
+    echo "Tables restored: ${TABLE_COUNT}"
+fi
 
 echo "$(date): Restore completed successfully"

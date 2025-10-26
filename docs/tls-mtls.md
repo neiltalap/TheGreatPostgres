@@ -38,6 +38,9 @@ subjectAltName = @alt_names
 
 [alt_names]
 DNS.1 = db.ozinozi.com
+# Add the Compose service name so internal containers using host 'postgres'
+# can verify-full successfully.
+DNS.2 = postgres
 # Add your server's public IP if desired
 # IP.1 = 203.0.113.10
 EOF
@@ -83,3 +86,7 @@ psql "host=db.ozinozi.com port=5432 dbname=postgres user=dbuser \
 ## Backup/Restore containers
 
 Place a copy of the client certs for the backup/restore identity in `client-certs/` and the CA in `client-certs/`. The compose mounts these into the containers and sets `PGSSLMODE`, `PGSSLROOTCERT`, `PGSSLCERT`, `PGSSLKEY` so the tools authenticate with mTLS automatically.
+
+Notes
+- The server certificate must include `DNS:postgres` in its Subject Alternative Names (SANs) for internal containers to connect using the host `postgres` with `PGSSLMODE=verify-full`. The helper script `./generate-certs.sh` adds this SAN automatically. If you generated certs previously and internal clients fail with a hostname or readiness error, re-generate with `--force`.
+- If you intentionally do not want to include `DNS:postgres`, you may set `PGSSLMODE=verify-ca` for the backup/restore/exporter services to skip hostname verification while still enforcing CA + client cert validation.

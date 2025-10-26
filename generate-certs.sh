@@ -69,6 +69,13 @@ if [[ -z "${SANS}" ]]; then
   fi
 fi
 
+# Always include the Docker Compose service name 'postgres' for internal clients
+# so that containers connecting to host 'postgres' with PGSSLMODE=verify-full
+# succeed hostname verification against the server certificate.
+if [[ ",${SANS}," != *",DNS:postgres,"* ]]; then
+  SANS="${SANS},DNS:postgres"
+fi
+
 SAN_STRING="$SANS"
 
 # 1) Create CA if missing

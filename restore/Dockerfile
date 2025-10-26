@@ -38,6 +38,7 @@ RUN for ver in 17 16 15; do \
     ln -sf "/usr/bin/pg_restore$ver" /usr/bin/pg_restore && \
     ln -sf "/usr/bin/psql$ver" /usr/bin/psql && \
     ln -sf "/usr/bin/pg_isready$ver" /usr/bin/pg_isready && \
+    if [ -f "/usr/bin/pg_dumpall$ver" ]; then ln -sf "/usr/bin/pg_dumpall$ver" /usr/bin/pg_dumpall; fi && \
     break; \
     fi; \
     done
@@ -48,11 +49,13 @@ RUN if [ ! -f /usr/bin/pg_dump ]; then \
     find /usr -name "pg_restore*" -type f -exec ln -sf {} /usr/bin/pg_restore \; 2>/dev/null | head -1; \
     find /usr -name "psql*" -type f -exec ln -sf {} /usr/bin/psql \; 2>/dev/null | head -1; \
     find /usr -name "pg_isready*" -type f -exec ln -sf {} /usr/bin/pg_isready \; 2>/dev/null | head -1; \
+    find /usr -name "pg_dumpall*" -type f -exec ln -sf {} /usr/bin/pg_dumpall \; 2>/dev/null | head -1; \
     fi
 
 # Verify symlinks work
-RUN ls -la /usr/bin/pg_dump /usr/bin/pg_restore /usr/bin/psql /usr/bin/pg_isready && \
+RUN ls -la /usr/bin/pg_dump /usr/bin/pg_restore /usr/bin/psql /usr/bin/pg_isready /usr/bin/pg_dumpall && \
     /usr/bin/pg_dump --version || echo "pg_dump not working" && \
+    /usr/bin/pg_dumpall --version || echo "pg_dumpall not working" && \
     /usr/bin/psql --version || echo "psql not working"
 
 # Environment variables with defaults
