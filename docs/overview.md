@@ -6,6 +6,6 @@
 - Backups to S3-compatible storage; restore tooling included.
 
 Start here:
-- docs/cloudflare-tunnel.md — expose DB safely via Cloudflare
 - docs/tls-mtls.md — set up server and client certs (mTLS)
+- docs/clients.md — how clients connect with mTLS
 - docs/backup-restore.md — use backups/restores with mTLS

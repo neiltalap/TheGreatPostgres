@@ -23,4 +23,5 @@ Quickstart
 More
 - docs/overview.md — high-level summary
 - docs/tls-mtls.md — TLS and client cert setup
+- docs/clients.md — how to connect from clients
 - docs/backup-restore.md — backups and restores with mTLS

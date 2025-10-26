@@ -134,7 +134,7 @@ services:
     container_name: postgres-exporter
     restart: unless-stopped
     environment:
-      DATA_SOURCE_NAME: "postgresql://${POSTGRES_USER:-dbuser}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-production_db}?sslmode=disable"
+      DATA_SOURCE_NAME: "postgresql://${POSTGRES_USER:-dbuser}@postgres:5432/${POSTGRES_DB:-production_db}?sslmode=verify-full&sslrootcert=/client-certs/ca.crt&sslcert=/client-certs/client.crt&sslkey=/client-certs/client.key"
     ports:
       - "${SERVER_PRIVATE_IP:-10.0.0.2}:9187:9187"
     networks:
@@ -144,6 +144,8 @@ services:
         condition: service_healthy
     profiles:
       - monitoring
+    volumes:
+      - ./client-certs:/client-certs:ro
 
   
 
