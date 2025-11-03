@@ -50,7 +50,7 @@ jobs:
 
   build-arm64:
     name: Build ARM64 (native)
-    runs-on: ubuntu-24.04-arm64
+    runs-on: ubuntu-22.04-arm64
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -106,4 +106,3 @@ jobs:
             --amend ${IMAGE_BASE}:sha-${{ github.sha }}-amd64 \
             --amend ${IMAGE_BASE}:sha-${{ github.sha }}-arm64
           docker manifest push ${IMAGE_BASE}:sha-${{ github.sha }}
-
