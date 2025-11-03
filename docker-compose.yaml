@@ -1,6 +1,8 @@
 services:
   postgres:
-    image: postgres:17.5-alpine3.22
+    build:
+      context: .
+      dockerfile: postgres/Dockerfile
     container_name: postgres-prod
     restart: unless-stopped
     environment:
