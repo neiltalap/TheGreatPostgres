@@ -1,4 +1,4 @@
-FROM timescale/timescaledb:2.16.0-pg17
+FROM timescale/timescaledb:latest-pg17
 
 # Install pgvector for PostgreSQL 17
 RUN apt-get update \
@@ -6,4 +6,3 @@ RUN apt-get update \
  && rm -rf /var/lib/apt/lists/*
 
 # No entrypoint changes; configs are mounted via docker-compose and init scripts run as usual.
-
