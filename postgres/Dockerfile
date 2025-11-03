@@ -1,4 +1,4 @@
-FROM postgres:17
+FROM postgres:17-bookworm
 
 # Install TimescaleDB + pgvector for PostgreSQL 17 (Debian-based official image)
 RUN apt-get update \
