@@ -26,7 +26,8 @@ Quickstart
 6) Test client connection (psql example)
    - `psql "host=db.ozinozi.com port=5432 dbname=postgres user=dbuser sslmode=verify-full sslrootcert=ca.crt sslcert=client.crt sslkey=client.key"`
 7) Configure and test backups
-   - Put backup identity certs in `client-certs/` (e.g., create `--client backup` with the script)
+   - Generate an `admin` client cert (SUPERUSER) for full-cluster backups: `./generate-certs.sh --cn db.ozinozi.com --client admin`
+   - Backup/restore default to the `admin` identity and structured paths: `client-certs/admin/client.{crt,key}` and `client-certs/ca.crt`
    - `./backup-manager.sh setup` (validates S3, builds images, runs a test backup)
    - `./backup-manager.sh list` (verify uploaded backup)
    - If the backup service reports it cannot connect and your server cert was generated without `DNS:postgres`, re-run cert generation with `--force` or set `PGSSLMODE=verify-ca` for backup/restore in `docker-compose.yaml`.

@@ -34,7 +34,9 @@ Examples
 
 Outputs
 - Server/CA: `certs/ca.crt`, `certs/ca.key`, `certs/server.crt`, `certs/server.key`
-- Clients: `client-certs/<user>.crt`, `client-certs/<user>.key` (+ convenience copies `client-certs/client.crt`, `client.key`)
+- Clients (structured): `client-certs/<user>/client.crt`, `client-certs/<user>/client.key`
+  - Flat convenience copies are also written: `client-certs/<user>.crt`, `client-certs/<user>.key`, and `client-certs/client.*` from the first user
+  - The CA is also copied to `client-certs/ca.crt` for client tooling
 
 Apply certs
 
@@ -53,7 +55,7 @@ Manages on-demand backups, restores, and the scheduled backup service. Uses mTLS
 Prerequisites
 - `.env` filled (copy from `.env.example`).
 - S3 credentials valid; bucket accessible.
-- Postgres running; certs in `certs/`; backup client certs in `client-certs/`.
+- Postgres running; server certs in `certs/`; client certs structured under `client-certs/`.
 
 Commands
 
@@ -98,7 +100,7 @@ Commands
 - One-time setup: validate env, rebuild images, test S3 connectivity, create S3 folder structure, ensure DB exists, start service, run a test backup.
 
 Notes
-- Backup/restore containers authenticate to Postgres with client certs mounted from `client-certs/` (no passwords).
+- Backup/restore containers authenticate to Postgres with client certs mounted from `client-certs/` (no passwords). Default identity is `admin` using `client-certs/admin/client.{crt,key}` and `client-certs/ca.crt`. For full-cluster backups, the role should be SUPERUSER.
 - S3 provider is configurable via `.env` (AWS, Hetzner, MinIO, R2, etc.).
 
 ---
