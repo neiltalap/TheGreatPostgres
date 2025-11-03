@@ -88,6 +88,10 @@ else
   echo "[certs] Using existing CA (certs/ca.crt)"
 fi
 
+# Copy CA to client-certs for convenience (clients often expect ca.crt next to
+# client certs). Use a copy (not a symlink) so mounting client-certs alone works.
+cp -f certs/ca.crt client-certs/ca.crt >/dev/null 2>&1 || true
+
 # 2) Server key + CSR + signed cert with SAN
 if [[ -f certs/server.key || -f certs/server.crt ]]; then
   if [[ $FORCE -eq 1 ]]; then
@@ -141,7 +145,12 @@ EOF
   openssl x509 -req -in "client-certs/${user}.csr" -CA certs/ca.crt -CAkey certs/ca.key \
     -out "client-certs/${user}.crt" -days "$DAYS" -sha256 >/dev/null 2>&1
   chmod 600 "client-certs/${user}.key"
-  echo "[certs] Wrote client-certs/${user}.crt and .key"
+  # Also place structured copies under client-certs/<user>/
+  mkdir -p "client-certs/${user}"
+  cp -f "client-certs/${user}.crt" "client-certs/${user}/client.crt"
+  cp -f "client-certs/${user}.key" "client-certs/${user}/client.key"
+  chmod 600 "client-certs/${user}/client.key"
+  echo "[certs] Wrote client-certs/${user}.crt and .key (and client-certs/${user}/client.*)"
 done
 
 # 4) Default client symlinks/copies for convenience

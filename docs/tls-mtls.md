@@ -8,9 +8,10 @@ Server files (place on host):
 - certs/ca.crt — CA that signs client certificates
 
 Client files (per user/app):
-- client-certs/client.crt — client certificate signed by the same CA
-- client-certs/client.key — client private key (keep secure)
-- ca.crt — same CA used by the server (for sslrootcert)
+- client-certs/<user>/client.crt — client certificate signed by the same CA
+- client-certs/<user>/client.key — client private key (keep secure)
+- client-certs/ca.crt — copy of the CA used by the server (for sslrootcert)
+  - Flat copies are also written for convenience: client-certs/<user>.crt and <user>.key
 
 Important: The client certificate Common Name (CN) must equal the Postgres username (or set up pg_ident mapping).
 
@@ -51,9 +52,13 @@ openssl x509 -req -in certs/server.csr -CA certs/ca.crt -CAkey certs/ca.key -CAc
   -out certs/server.crt -days 825 -sha256 -extensions v3_req -extfile certs/server.cnf
 chmod 600 certs/server.key
 
+# Copy CA for clients
+cp certs/ca.crt client-certs/ca.crt
+
 # 3) Create a client cert for a Postgres user (CN must equal DB username)
-# Example for DB user "dbuser"
-cat > client-certs/client.cnf <<'EOF'
+# Example for DB user "dbuser" (the generator script does this automatically)
+mkdir -p client-certs/dbuser
+cat > client-certs/dbuser/req.cnf <<'EOF'
 [req]
 distinguished_name = dn
 prompt = no
@@ -61,11 +66,13 @@ prompt = no
 [dn]
 CN = dbuser
 EOF
-
-openssl genrsa -out client-certs/client.key 4096
-openssl req -new -key client-certs/client.key -out client-certs/client.csr -config client-certs/client.cnf
-openssl x509 -req -in client-certs/client.csr -CA certs/ca.crt -CAkey certs/ca.key \
-  -out client-certs/client.crt -days 825 -sha256
+openssl genrsa -out client-certs/dbuser/client.key 4096
+openssl req -new -key client-certs/dbuser/client.key -out client-certs/dbuser/client.csr -config client-certs/dbuser/req.cnf
+openssl x509 -req -in client-certs/dbuser/client.csr -CA certs/ca.crt -CAkey certs/ca.key \
+  -out client-certs/dbuser/client.crt -days 825 -sha256
+# (Optional) write flat copies
+cp client-certs/dbuser/client.crt client-certs/dbuser.crt
+cp client-certs/dbuser/client.key client-certs/dbuser.key
 ```
 
 Restart Postgres after placing certs:

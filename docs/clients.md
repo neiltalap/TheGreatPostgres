@@ -2,11 +2,14 @@
 
 All client connections must use TLS with client certificates (mTLS). No passwords are accepted. The Common Name (CN) in the client certificate must match the Postgres username.
 
-Place these files on the client machine:
+Place these files on the client machine (structured):
 
-- ca.crt — the CA that signed the server and client certs
-- client.crt — the client certificate for your DB user
-- client.key — the client private key (chmod 600)
+- client-certs/ca.crt — copy of the CA that signed the server and client certs
+- client-certs/<user>/client.crt — the client certificate for your DB user
+- client-certs/<user>/client.key — the client private key (chmod 600)
+
+Flat copies are also created for convenience:
+- client-certs/<user>.crt and client-certs/<user>.key
 
 ## psql / libpq
 
@@ -14,7 +17,8 @@ Connection string:
 
 ```
 psql "host=db.ozinozi.com port=5432 dbname=postgres user=dbuser \
-      sslmode=verify-full sslrootcert=ca.crt sslcert=client.crt sslkey=client.key"
+      sslmode=verify-full sslrootcert=client-certs/ca.crt \
+      sslcert=client-certs/dbuser/client.crt sslkey=client-certs/dbuser/client.key"
 ```
 
 Environment variables (alternative):
@@ -25,9 +29,9 @@ export PGPORT=5432
 export PGDATABASE=postgres
 export PGUSER=dbuser
 export PGSSLMODE=verify-full
-export PGSSLROOTCERT=/path/to/ca.crt
-export PGSSLCERT=/path/to/client.crt
-export PGSSLKEY=/path/to/client.key
+export PGSSLROOTCERT=/path/to/client-certs/ca.crt
+export PGSSLCERT=/path/to/client-certs/dbuser/client.crt
+export PGSSLKEY=/path/to/client-certs/dbuser/client.key
 psql
 ```
 
@@ -59,9 +63,9 @@ const client = new Client({
   database: 'postgres',
   user: 'dbuser',
   ssl: {
-    ca: fs.readFileSync('ca.crt').toString(),
-    cert: fs.readFileSync('client.crt').toString(),
-    key: fs.readFileSync('client.key').toString(),
+    ca: fs.readFileSync('client-certs/ca.crt').toString(),
+    cert: fs.readFileSync('client-certs/dbuser/client.crt').toString(),
+    key: fs.readFileSync('client-certs/dbuser/client.key').toString(),
     rejectUnauthorized: true,
     servername: 'db.ozinozi.com',
   },
@@ -82,10 +86,10 @@ import (
 )
 func main() {
   rootCAs := x509.NewCertPool()
-  caCert, _ := ioutil.ReadFile("ca.crt")
+  caCert, _ := ioutil.ReadFile("client-certs/ca.crt")
   rootCAs.AppendCertsFromPEM(caCert)
 
-  cert, _ := tls.LoadX509KeyPair("client.crt", "client.key")
+  cert, _ := tls.LoadX509KeyPair("client-certs/dbuser/client.crt", "client-certs/dbuser/client.key")
   tlsConfig := &tls.Config{RootCAs: rootCAs, Certificates: []tls.Certificate{cert}, ServerName: "db.ozinozi.com"}
 
   conn, _ := pgx.Connect(context.Background(),

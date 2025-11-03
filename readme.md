@@ -11,9 +11,9 @@ Quickstart
 1) Copy env template and fill values
    - `cp .env.example .env` (set S3 credentials and DB names/users)
 2) Generate TLS certs (CA, server with SAN, client per user)
-   - `./generate-certs.sh --cn db.ozinozi.com --client dbuser`
-   - The script automatically adds `DNS:postgres` to the server certificate SANs so internal services (backup/restore/exporter) can connect using host `postgres` with `PGSSLMODE=verify-full`. You can add extra SANs with repeated `--san` flags.
-   - Places files under `certs/` (server, ca) and `client-certs/` (client)
+   - `./generate-certs.sh --cn db.ozinozi.com --client admin --client appuser`
+   - The script automatically adds `DNS:postgres` to the server certificate SANs so internal services (backup/restore/exporter) can connect using host `postgres` with `PGSSLMODE=verify-full`. Add extra SANs with repeated `--san` flags.
+   - Places server/CA under `certs/` and client identities under structured folders `client-certs/<user>/client.crt|client.key` (and flat copies at `client-certs/<user>.crt|.key`). It also copies `certs/ca.crt` to `client-certs/ca.crt` for convenience.
    - Script auto-sets permissions; it also attempts `chown 999:999` on server certs (optional)
    - If you see `Permission denied` for server.key in logs, run: `./fix-certs-perms.sh --restart`
 3) Start Postgres
