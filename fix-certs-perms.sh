@@ -6,6 +6,7 @@ set -euo pipefail
 
 CONTAINER=${CONTAINER:-postgres-prod}
 CERTS_DIR=${CERTS_DIR:-certs}
+FALLBACK_IMAGE=${FALLBACK_IMAGE:-postgres:17-bookworm}
 RESTART=0
 
 usage() {
@@ -25,6 +26,7 @@ Notes:
       chmod 644 certs/server.crt certs/ca.crt
       chmod 755 certs
   - UID/GID are detected from the postgres user inside the running container.
+  - If the container is not accessible, we probe a fallback image (default: postgres:17-bookworm)
 USAGE
 }
 
@@ -53,9 +55,9 @@ UID_IN=$(docker exec "$CONTAINER" id -u postgres 2>/dev/null || true)
 GID_IN=$(docker exec "$CONTAINER" id -g postgres 2>/dev/null || true)
 
 if [[ -z "${UID_IN}" || -z "${GID_IN}" ]]; then
-  echo "[fix-certs] Container not accessible; attempting fallback image probe"
-  UID_IN=$(docker run --rm postgres:17.5-alpine3.22 id -u postgres)
-  GID_IN=$(docker run --rm postgres:17.5-alpine3.22 id -g postgres)
+  echo "[fix-certs] Container not accessible; attempting fallback image probe: ${FALLBACK_IMAGE}"
+  UID_IN=$(docker run --rm "${FALLBACK_IMAGE}" id -u postgres)
+  GID_IN=$(docker run --rm "${FALLBACK_IMAGE}" id -g postgres)
 fi
 
 echo "[fix-certs] Using UID:GID ${UID_IN}:${GID_IN}"
@@ -104,4 +106,3 @@ if [[ "$RESTART" -eq 1 ]]; then
 else
   echo "[fix-certs] You can restart postgres with: docker compose up -d --force-recreate postgres"
 fi
-
