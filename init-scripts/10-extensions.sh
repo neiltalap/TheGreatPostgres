@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-DB_INIT_TARGET="${POSTGRES_DB:-postgres}"
+DB_INIT_TARGET="${POSTGRES_DATABASE:-${POSTGRES_DB:-postgres}}"
 echo "[init] Ensuring extensions (timescaledb, vector if available) in ${DB_INIT_TARGET} and template1" >&2
 
 # Create in target database
