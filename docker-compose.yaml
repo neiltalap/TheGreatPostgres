@@ -145,6 +145,27 @@ services:
     volumes:
       - ./client-certs:/client-certs:ro
 
+  # Cloudflare Tunnel (optional)
+  cloudflared:
+    image: cloudflare/cloudflared:latest
+    container_name: cloudflared
+    restart: unless-stopped
+    # Use a dashboard-managed tunnel token (recommended). Create the tunnel in
+    # Cloudflare Zero Trust, then copy the token here.
+    command: tunnel --no-autoupdate run --token ${CLOUDFLARE_TUNNEL_TOKEN}
+    environment:
+      # Optional: if you prefer to run with a local config file instead of a token,
+      # mount ./cloudflared and set a custom command (see docs/cloudflare-tunnel.md)
+      - TUNNEL_ORIGIN=postgres:5432
+    depends_on:
+      postgres:
+        condition: service_started
+    profiles:
+      - tunnel
+    # Mount a config dir if you want to use a local config.yml/credentials
+    volumes:
+      - ./cloudflared:/etc/cloudflared
+
 volumes:
   postgres_data:
     driver: local

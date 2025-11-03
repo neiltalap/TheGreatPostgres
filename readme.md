@@ -41,3 +41,5 @@ More
 - docs/clients.md — how to connect from clients
 - docs/backup-restore.md — backups and restores with mTLS
 - docs/commands.md — script usage (generate certs + backup manager)
+ - docs/roles.md — creating app and datagrip roles + psql access
+ - docs/cloudflare-tunnel.md — add an optional Cloudflare Tunnel
