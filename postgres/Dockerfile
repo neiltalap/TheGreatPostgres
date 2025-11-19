@@ -14,7 +14,8 @@ RUN set -eux; \
     apt-get update; \
     apt-get install -y --no-install-recommends \
       timescaledb-2-postgresql-17 \
-      postgresql-17-pgvector; \
+      postgresql-17-pgvector \
+      postgresql-17-cron; \
     rm -rf /var/lib/apt/lists/*
 
 # No entrypoint changes; configs are mounted via docker-compose and init scripts run as usual.
